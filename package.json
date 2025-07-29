@@ -1,0 +1,10 @@
+{
+  "name": "whitelist-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "description": "Discord bot for managing MariaDB whitelist",
+  "dependencies": {
+    "discord.js": "^14.21.0",
+    "mysql2": "^3.9.7"
+  }
+} 
