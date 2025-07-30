@@ -5,6 +5,8 @@
   "description": "Discord bot for managing MariaDB whitelist",
   "dependencies": {
     "discord.js": "^14.21.0",
-    "mysql2": "^3.9.7"
+    "dotenv": "^16.4.1",
+    "mysql2": "^3.9.7",
+    "uuid": "^11.1.0"
   }
-} 
+}
