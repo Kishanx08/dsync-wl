@@ -69,10 +69,20 @@ async function unbanUser(identifier) {
 async function isUserBanned(identifier) {
   const sql = 'SELECT * FROM user_bans WHERE identifier = ? AND (expire > UNIX_TIMESTAMP() OR expire = 0) LIMIT 1';
   try {
+    console.log(`[DATABASE] Executing ban check for identifier: ${identifier}`);
+    console.log(`[DATABASE] SQL: ${sql}`);
+    
     const [rows] = await pool.execute(sql, [identifier]);
+    
+    console.log(`[DATABASE] Ban check result for ${identifier}:`, {
+      found: rows.length > 0,
+      currentTime: Math.floor(Date.now() / 1000),
+      row: rows[0] || 'No matching ban record'
+    });
+    
     return rows.length > 0 ? rows[0] : null;
   } catch (err) {
-    console.error('Error checking user ban status:', err);
+    console.error('[DATABASE] Error checking user ban status:', err);
     throw err;
   }
 }

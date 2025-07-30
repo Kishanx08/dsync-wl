@@ -18,13 +18,20 @@ async function getUserStaffInfo(license_identifier) {
     if (rows.length === 0) return null;
     
     const user = rows[0];
+    
+    // Check if using boolean columns (0/1) or rank string
+    const isNewFormat = 'is_staff' in user;
+    
     const staffInfo = {
-      isStaff: user.rank === 'staff',
-      isSeniorStaff: user.rank === 'seniorstaff',
-      isSuperAdmin: user.rank === 'superadmin',
+      // Check for both old rank string and new boolean columns
+      isStaff: isNewFormat ? user.is_staff === 1 : (user.rank === 'staff'),
+      isSeniorStaff: isNewFormat ? user.is_senior_staff === 1 : (user.rank === 'seniorstaff'),
+      isSuperAdmin: isNewFormat ? user.is_superadmin === 1 : (user.rank === 'superadmin'),
       lastSeen: user.last_seen ? new Date(user.last_seen).toLocaleString() : 'Never',
       playTime: user.playtime || '0 minutes',
-      joinDate: user.join_date ? new Date(user.join_date).toLocaleString() : 'Unknown'
+      joinDate: user.join_date ? new Date(user.join_date).toLocaleString() : 'Unknown',
+      // Add raw data for debugging
+      _raw: user
     };
     
     return staffInfo;
@@ -66,7 +73,9 @@ module.exports = {
       }
 
       // Check ban status
+      console.log(`[CHECK] Checking ban status for license: ${userData.license_identifier}`);
       const banInfo = await isUserBanned(userData.license_identifier);
+      console.log(`[CHECK] Ban check result:`, banInfo);
       const isBanned = banInfo !== null;
       
       // Check whitelist status
