@@ -19,14 +19,38 @@ async function getUserStaffInfo(license_identifier) {
     
     const user = rows[0];
     
-    // Check if using boolean columns (0/1) or rank string
+    // Log raw user data for debugging
+    console.log(`[CHECK] Raw user data:`, JSON.stringify(user, null, 2));
+    
+    // Check which format we're using
     const isNewFormat = 'is_staff' in user;
+    console.log(`[CHECK] Using ${isNewFormat ? 'new' : 'old'} format for permissions`);
+    
+    // Get staff status based on format
+    let isStaff, isSeniorStaff, isSuperAdmin;
+    
+    if (isNewFormat) {
+      isStaff = user.is_staff === 1 || user.is_staff === true;
+      isSeniorStaff = user.is_senior_staff === 1 || user.is_senior_staff === true;
+      isSuperAdmin = user.is_superadmin === 1 || user.is_superadmin === true;
+      
+      // In case any of the fields are null/undefined, default to false
+      isStaff = isStaff || false;
+      isSeniorStaff = isSeniorStaff || false;
+      isSuperAdmin = isSuperAdmin || false;
+      
+      console.log(`[CHECK] New format permissions - Staff: ${isStaff}, Senior: ${isSeniorStaff}, SuperAdmin: ${isSuperAdmin}`);
+    } else {
+      isStaff = user.rank === 'staff';
+      isSeniorStaff = user.rank === 'seniorstaff';
+      isSuperAdmin = user.rank === 'superadmin';
+      console.log(`[CHECK] Old format permissions - Rank: ${user.rank}`);
+    }
     
     const staffInfo = {
-      // Check for both old rank string and new boolean columns
-      isStaff: isNewFormat ? user.is_staff === 1 : (user.rank === 'staff'),
-      isSeniorStaff: isNewFormat ? user.is_senior_staff === 1 : (user.rank === 'seniorstaff'),
-      isSuperAdmin: isNewFormat ? user.is_superadmin === 1 : (user.rank === 'superadmin'),
+      isStaff,
+      isSeniorStaff,
+      isSuperAdmin,
       lastSeen: user.last_seen ? new Date(user.last_seen).toLocaleString() : 'Never',
       playTime: user.playtime || '0 minutes',
       joinDate: user.join_date ? new Date(user.join_date).toLocaleString() : 'Unknown',
@@ -72,11 +96,23 @@ module.exports = {
         return message.reply('This user is not registered in the database.');
       }
 
-      // Check ban status
+      // Check ban status with detailed logging
       console.log(`[CHECK] Checking ban status for license: ${userData.license_identifier}`);
       const banInfo = await isUserBanned(userData.license_identifier);
-      console.log(`[CHECK] Ban check result:`, banInfo);
+      console.log(`[CHECK] Ban check result:`, JSON.stringify(banInfo, null, 2));
       const isBanned = banInfo !== null;
+      
+      // Log detailed ban information if banned
+      if (isBanned) {
+        console.log(`[CHECK] User is banned. Details:`, {
+          reason: banInfo.reason,
+          expires: banInfo.expire,
+          expiresDate: banInfo.expire > 0 ? new Date(banInfo.expire * 1000).toISOString() : 'Never',
+          creator: banInfo.creator_identifier,
+          creationReason: banInfo.creation_reason,
+          banHash: banInfo.ban_hash
+        });
+      }
       
       // Check whitelist status
       const isWhitelisted = await isUserWhitelisted(userData.license_identifier);
