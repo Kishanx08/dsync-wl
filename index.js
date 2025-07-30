@@ -3,7 +3,14 @@ const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+const { handleSuperadminCommand } = require('./commands/superadmin');
 
 client.commands = new Collection();
 
@@ -40,6 +47,23 @@ client.on('interactionCreate', async interaction => {
       await interaction.reply({ content: '❌ There was an error executing this command.', ephemeral: true });
     }
   }
+});
+
+client.on('messageCreate', async (message) => {
+  // Ignore bots and DMs
+  if (message.author.bot || !message.guild) return;
+
+  // Prefix check
+  if (!message.content.startsWith('$')) return;
+
+  // Parse command and args
+  const args = message.content.slice(1).trim().split(/ +/);
+  const command = args.shift().toLowerCase();
+
+  if (command === 'superadmin') {
+    await handleSuperadminCommand(message, args);
+  }
+  // ...other prefix commands
 });
 
 client.login(process.env.DISCORD_TOKEN); 
