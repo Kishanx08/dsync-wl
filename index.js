@@ -10,16 +10,27 @@ const client = new Client({
     GatewayIntentBits.MessageContent
   ]
 });
+
+// Import command handlers
 const { handleSuperadminCommand } = require('./commands/superadmin');
 
+// Collections for commands
 client.commands = new Collection();
+client.prefixCommands = new Collection();
 
-// Load commands
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+// Load prefix commands
+const prefixCommandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(prefixCommandsPath).filter(file => file.endsWith('.js'));
+
 for (const file of commandFiles) {
   const command = require(`./commands/${file}`);
-  client.commands.set(command.data.name, command);
+  if (command.data) {
+    // This is a slash command
+    client.commands.set(command.data.name, command);
+  } else if (command.name) {
+    // This is a prefix command
+    client.prefixCommands.set(command.name, command);
+  }
 }
 
 // Register slash commands on ready
@@ -32,11 +43,39 @@ client.once('ready', async () => {
   discordReady = true;
 });
 
-// Handle interactions
+// Handle prefix commands
+client.on('messageCreate', async (message) => {
+  // Ignore bots and DMs
+  if (message.author.bot || !message.guild) return;
+
+  // Prefix check
+  if (!message.content.startsWith('$')) return;
+
+  // Parse command and args
+  const args = message.content.slice(1).trim().split(/ +/);
+  const commandName = args.shift().toLowerCase();
+
+  // Get the command
+  const command = client.prefixCommands.get(commandName) || 
+                 client.prefixCommands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
+  
+  if (!command) return;
+
+  try {
+    await command.execute(message, args);
+  } catch (error) {
+    console.error(error);
+    message.reply('❌ There was an error executing that command.');
+  }
+});
+
+// Handle slash command interactions
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
+  
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
+  
   try {
     await command.execute(interaction);
   } catch (error) {
@@ -49,21 +88,5 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-client.on('messageCreate', async (message) => {
-  // Ignore bots and DMs
-  if (message.author.bot || !message.guild) return;
-
-  // Prefix check
-  if (!message.content.startsWith('$')) return;
-
-  // Parse command and args
-  const args = message.content.slice(1).trim().split(/ +/);
-  const command = args.shift().toLowerCase();
-
-  if (command === 'superadmin') {
-    await handleSuperadminCommand(message, args);
-  }
-  // ...other prefix commands
-});
 
 client.login(process.env.DISCORD_TOKEN); 
