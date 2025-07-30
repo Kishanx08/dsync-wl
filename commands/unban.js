@@ -1,76 +1,65 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { unbanUser, isUserBanned, getUserByDiscordId } = require('../utils/mariadb');
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('unban')
-    .setDescription('Unban a user by their license identifier')
-    .addStringOption(option =>
-      option.setName('identifier')
-        .setDescription('The license identifier of the user to unban')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('reason')
-        .setDescription('Reason for the unban')
-        .setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
-    .setDMPermission(false),
+  name: 'unban',
+  description: 'Remove a ban from a user by their license identifier',
+  usage: '$unban <license_identifier> <reason>',
+  example: '$unban license:123456 Mistake in ban',
+  async execute(message, args) {
+    console.log(`[UNBAN] Command received from ${message.author.tag} (${message.author.id})`);
+    
+    // Check if user has permission
+    if (!message.member.roles.cache.some(role => ['seniorstaff', 'staff', 'superadmin'].includes(role.name.toLowerCase()))) {
+      return message.reply('You do not have permission to use this command.');
+    }
 
-  async execute(interaction) {
-    console.log(`[UNBAN] Command received from ${interaction.user.tag} (${interaction.user.id})`);
-    await interaction.deferReply({ ephemeral: true });
+    // Check if all required arguments are provided
+    if (args.length < 2) {
+      return message.reply(`Incorrect syntax. Usage: \`${this.usage}\`\nExample: \`${this.example}\``);
+    }
 
-    const identifier = interaction.options.getString('identifier');
-    const reason = interaction.options.getString('reason');
-
+    const identifier = args[0].replace('license:', '');
+    const reason = args.slice(1).join(' ');
+    
     console.log(`[UNBAN] Processing unban for identifier: ${identifier}`);
     console.log(`[UNBAN] Reason: ${reason}`);
-
+    
     try {
       // Check if user is actually banned
-      console.log(`[UNBAN] Checking if user is currently banned...`);
-      const existingBan = await isUserBanned(identifier);
-      
-      if (!existingBan) {
+      console.log(`[UNBAN] Checking if user is banned...`);
+      const isBanned = await isUserBanned(identifier);
+      if (!isBanned) {
         console.log(`[UNBAN] User ${identifier} is not currently banned`);
-        return interaction.editReply('This user is not currently banned.');
+        return message.reply('This user is not currently banned.');
       }
       
-      console.log(`[UNBAN] Found existing ban for user ${identifier}:`, JSON.stringify(existingBan, null, 2));
-
-      // Get admin's identifier from database for logging
-      console.log(`[UNBAN] Getting admin's info from database...`);
-      const admin = await getUserByDiscordId(interaction.user.id);
+      console.log(`[UNBAN] User ${identifier} is currently banned, proceeding with unban...`);
       
-      if (!admin || !admin.license_identifier) {
-        console.log(`[UNBAN] Error: Could not find admin's info in database for Discord ID: ${interaction.user.id}`);
-        return interaction.editReply('Error: Could not find your user information in the database.');
+      // Get creator's identifier from database
+      console.log(`[UNBAN] Getting creator's info from database...`);
+      const creator = await getUserByDiscordId(message.author.id);
+      if (!creator || !creator.license_identifier) {
+        console.log(`[UNBAN] Error: Could not find creator's info in database for Discord ID: ${message.author.id}`);
+        return message.reply('Error: Could not find your user information in the database.');
       }
+      console.log(`[UNBAN] Creator's license identifier: ${creator.license_identifier}`);
       
-      console.log(`[UNBAN] Admin's license identifier: ${admin.license_identifier}`);
-
       // Remove the ban
-      console.log(`[UNBAN] Removing ban for user ${identifier}...`);
-      const result = await unbanUser(identifier);
+      console.log(`[UNBAN] Removing ban for ${identifier}...`);
+      await unbanUser(identifier);
+      console.log(`[UNBAN] Successfully removed ban for ${identifier}`);
       
-      if (result) {
-        const successMessage = `✅ Successfully unbanned user with identifier: ${identifier}\n` +
-                            `Reason: ${reason}`;
-        
-        console.log(`[UNBAN] Successfully removed ban for ${identifier}`);
-        console.log(`[UNBAN] Sending response to Discord:`, successMessage);
-        
-        await interaction.editReply(successMessage);
-      } else {
-        const errorMessage = 'Failed to unban user. The user might not be banned or an error occurred.';
-        console.log(`[UNBAN] ${errorMessage}`);
-        await interaction.editReply(errorMessage);
-      }
+      const response = `✅ Successfully unbanned user with identifier: ${identifier}\n` +
+                     `Reason: ${reason}`;
+      
+      console.log(`[UNBAN] Sending response to Discord:`, response);
+      await message.reply(response);
+      
     } catch (error) {
       console.error('[UNBAN] Error executing unban command:', error);
       const errorMessage = 'An error occurred while processing the unban.';
       console.log(`[UNBAN] Sending error to Discord: ${errorMessage}`);
-      await interaction.editReply(errorMessage);
+      await message.reply(errorMessage);
     }
   },
 };

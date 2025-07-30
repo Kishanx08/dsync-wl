@@ -1,4 +1,3 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { banUser, isUserBanned, getUserByDiscordId } = require('../utils/mariadb');
 const { v4: uuidv4 } = require('uuid');
 
@@ -47,42 +46,37 @@ function parseDuration(durationStr) {
 }
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('ban')
-    .setDescription('Ban a user by their license identifier')
-    .addStringOption(option =>
-      option.setName('identifier')
-        .setDescription('The license identifier of the user to ban')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('reason')
-        .setDescription('Reason for the ban')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('duration')
-        .setDescription('Duration of the ban (e.g., 1d, 2w, 1m, 1y)')
-        .setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
-    .setDMPermission(false),
+  name: 'ban',
+  description: 'Ban a user by their license identifier',
+  usage: '$ban <license_identifier> <duration> <reason>',
+  example: '$ban license:123456 7d Cheating',
+  async execute(message, args) {
+    console.log(`[BAN] Command received from ${message.author.tag} (${message.author.id})`);
+    
+    // Check if user has permission
+    if (!message.member.roles.cache.some(role => ['seniorstaff', 'staff', 'superadmin'].includes(role.name.toLowerCase()))) {
+      return message.reply('You do not have permission to use this command.');
+    }
 
-  async execute(interaction) {
-    console.log(`[BAN] Command received from ${interaction.user.tag} (${interaction.user.id})`);
-    await interaction.deferReply({ ephemeral: true });
+    // Check if all required arguments are provided
+    if (args.length < 3) {
+      return message.reply(`Incorrect syntax. Usage: \`${this.usage}\`\nExample: \`${this.example}\``);
+    }
 
-    const identifier = interaction.options.getString('identifier');
-    const reason = interaction.options.getString('reason');
-    const durationStr = interaction.options.getString('duration');
+    const identifier = args[0].replace('license:', '');
+    const durationStr = args[1];
+    const reason = args.slice(2).join(' ');
     
     console.log(`[BAN] Processing ban for identifier: ${identifier}`);
-    console.log(`[BAN] Reason: ${reason}`);
     console.log(`[BAN] Duration: ${durationStr}`);
+    console.log(`[BAN] Reason: ${reason}`);
     
     // Check if user is already banned
     console.log(`[BAN] Checking if user is already banned...`);
     const existingBan = await isUserBanned(identifier);
     if (existingBan) {
       console.log(`[BAN] User ${identifier} is already banned`);
-      return interaction.editReply('This user is already banned.');
+      return message.reply('This user is already banned.');
     }
     console.log(`[BAN] User ${identifier} is not currently banned`);
 
@@ -91,15 +85,15 @@ module.exports = {
     const expireTimestamp = parseDuration(durationStr);
     if (!expireTimestamp) {
       console.log(`[BAN] Invalid duration format: ${durationStr}`);
-      return interaction.editReply('Invalid duration format. Use format like 1d, 2w, 1m, 1y');
+      return message.reply('Invalid duration format. Use format like 1d, 2w, 1m, 1y');
     }
 
     // Get creator's identifier from database
     console.log(`[BAN] Getting creator's info from database...`);
-    const creator = await getUserByDiscordId(interaction.user.id);
+    const creator = await getUserByDiscordId(message.author.id);
     if (!creator || !creator.license_identifier) {
-      console.log(`[BAN] Error: Could not find creator's info in database for Discord ID: ${interaction.user.id}`);
-      return interaction.editReply('Error: Could not find your user information in the database.');
+      console.log(`[BAN] Error: Could not find creator's info in database for Discord ID: ${message.author.id}`);
+      return message.reply('Error: Could not find your user information in the database.');
     }
     console.log(`[BAN] Creator's license identifier: ${creator.license_identifier}`);
 
@@ -132,13 +126,13 @@ module.exports = {
                      `Duration: ${durationText}`;
       
       console.log(`[BAN] Sending response to Discord:`, response);
-      await interaction.editReply(response);
+      await message.reply(response);
       
     } catch (error) {
       console.error('[BAN] Error executing ban command:', error);
       const errorMessage = 'An error occurred while processing the ban.';
       console.log(`[BAN] Sending error to Discord: ${errorMessage}`);
-      await interaction.editReply(errorMessage);
+      await message.reply(errorMessage);
     }
   },
 };
