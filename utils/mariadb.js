@@ -31,8 +31,69 @@ async function removeLicense(license_identifier) {
   }
 }
 
+async function banUser(banData) {
+  const sql = `
+    INSERT INTO user_bans 
+    (ban_hash, identifier, reason, timestamp, expire, creator_identifier, creation_reason) 
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `;
+  
+  try {
+    const [result] = await pool.execute(sql, [
+      banData.ban_hash,
+      banData.identifier,
+      banData.reason,
+      banData.timestamp,
+      banData.expire,
+      banData.creator_identifier,
+      banData.creation_reason
+    ]);
+    return result;
+  } catch (err) {
+    console.error('Error banning user:', err);
+    throw err;
+  }
+}
+
+async function unbanUser(identifier) {
+  const sql = 'DELETE FROM user_bans WHERE identifier = ?';
+  try {
+    const [result] = await pool.execute(sql, [identifier]);
+    return result.affectedRows > 0;
+  } catch (err) {
+    console.error('Error unbanning user:', err);
+    throw err;
+  }
+}
+
+async function isUserBanned(identifier) {
+  const sql = 'SELECT * FROM user_bans WHERE identifier = ? AND (expire > UNIX_TIMESTAMP() OR expire = 0) LIMIT 1';
+  try {
+    const [rows] = await pool.execute(sql, [identifier]);
+    return rows.length > 0 ? rows[0] : null;
+  } catch (err) {
+    console.error('Error checking user ban status:', err);
+    throw err;
+  }
+}
+
+async function getUserByDiscordId(discordId) {
+  const sql = 'SELECT * FROM users WHERE discord_id = ? LIMIT 1';
+  try {
+    const [rows] = await pool.execute(sql, [discordId]);
+    return rows.length > 0 ? rows[0] : null;
+  } catch (err) {
+    console.error('Error getting user by Discord ID:', err);
+    throw err;
+  }
+}
+
 module.exports = {
   pool,
   addLicense,
-  removeLicense
-}; 
+  removeLicense,
+  banUser,
+  unbanUser,
+  isUserBanned,
+  getUserByDiscordId
+};
