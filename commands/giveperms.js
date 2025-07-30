@@ -1,50 +1,82 @@
-const { setPermission, ADMIN_IDS } = require('../utils/permissions');
+const { SlashCommandBuilder } = require('discord.js');
+const { setPermission, ADMIN_IDS, hasPermission } = require('../utils/permissions');
 
 module.exports = {
     name: 'giveperms',
-    aliases: ['gp'],
     description: 'Manage user command permissions',
-    usage: '<@user> <command> <true/false>',
     adminOnly: true,
-    
-    async execute(message, args) {
-        // Check if user is an admin
-        if (!ADMIN_IDS.includes(message.author.id)) {
-            return message.reply('❌ You do not have permission to use this command.');
+    data: new SlashCommandBuilder()
+        .setName('giveperms')
+        .setDescription('Manage user command permissions')
+        .addUserOption(option =>
+            option.setName('user')
+                .setDescription('The user to manage permissions for')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('command')
+                .setDescription('The command to grant/revoke')
+                .setRequired(true)
+                .setAutocomplete(true))
+        .addBooleanOption(option =>
+            option.setName('allow')
+                .setDescription('Whether to allow or deny the command')
+                .setRequired(true)),
+
+    async execute(interaction) {
+        // Only allow specific admin users
+        if (!ADMIN_IDS.includes(interaction.user.id)) {
+            return interaction.reply({
+                content: '❌ You do not have permission to use this command.',
+                ephemeral: true
+            });
         }
 
-        // Check if user is mentioned
-        const targetUser = message.mentions.users.first();
-        if (!targetUser) {
-            return message.reply('❌ Please mention a user to modify permissions for.\nUsage: `$giveperms @user command true/false`');
-        }
-
-        // Get command and permission value
-        const commandName = args[1]?.toLowerCase();
-        const allow = args[2]?.toLowerCase();
-
-        if (!commandName || (allow !== 'true' && allow !== 'false')) {
-            return message.reply('❌ Invalid syntax. Usage: `$giveperms @user command true/false`');
-        }
+        const targetUser = interaction.options.getUser('user');
+        const commandName = interaction.options.getString('command');
+        const allow = interaction.options.getBoolean('allow');
 
         // Prevent modifying permissions for other admins
-        if (ADMIN_IDS.includes(targetUser.id) && targetUser.id !== message.author.id) {
-            return message.reply('❌ You cannot modify permissions for other admins.');
+        if (ADMIN_IDS.includes(targetUser.id) && targetUser.id !== interaction.user.id) {
+            return interaction.reply({
+                content: '❌ You cannot modify permissions for other admins.',
+                ephemeral: true
+            });
         }
 
         try {
             // Update permissions
-            const success = setPermission(targetUser.id, commandName, allow === 'true');
+            const success = setPermission(targetUser.id, commandName, allow);
             
             if (!success) {
                 throw new Error('Failed to update permissions');
             }
 
-            return message.reply(`✅ Updated permissions for <@${targetUser.id}>: \`${commandName}\` ${allow === 'true' ? '✅ allowed' : '❌ denied'}`);
+            return interaction.reply({
+                content: `✅ Updated permissions for <@${targetUser.id}>: \`${commandName}\` ${allow ? '✅ allowed' : '❌ denied'}`,
+                ephemeral: true
+            });
 
         } catch (error) {
             console.error('Error in giveperms command:', error);
-            return message.reply('❌ An error occurred while updating permissions.');
+            return interaction.reply({
+                content: '❌ An error occurred while updating permissions.',
+                ephemeral: true
+            });
         }
+    },
+
+    async autocomplete(interaction) {
+        const focusedValue = interaction.options.getFocused().toLowerCase();
+        const commands = Array.from(interaction.client.commands.keys())
+            .filter(cmd => cmd !== 'giveperms') // Don't allow modifying giveperms
+            .filter(cmd => cmd.toLowerCase().includes(focusedValue))
+            .slice(0, 25); // Discord limits to 25 choices
+
+        await interaction.respond(
+            commands.map(command => ({
+                name: command,
+                value: command
+            }))
+        );
     }
 };

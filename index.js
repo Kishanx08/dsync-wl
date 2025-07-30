@@ -67,23 +67,20 @@ client.on('messageCreate', async message => {
   if (!command) return;
 
   try {
-    // Skip admin check for the check command
-    if (command.name !== 'check') {
-      // Check if user is a server admin (which we want to prevent from bypassing)
-      const member = await message.guild.members.fetch(message.author.id);
-      if (member.permissions.has('ADMINISTRATOR')) {
-          return message.reply('❌ Server admins cannot use bot commands. Please ask a bot admin for assistance.');
-      }
+    // Check if user is a server admin (which we want to prevent from bypassing)
+    const member = await message.guild.members.fetch(message.author.id);
+    if (member.permissions.has('ADMINISTRATOR')) {
+        return message.reply('❌ Server admins cannot use bot commands. Please ask a bot admin for assistance.');
+    }
 
-      // Check permissions for admin-only commands
-      if (command.adminOnly && !ADMIN_IDS.includes(message.author.id)) {
-          return message.reply('❌ You do not have permission to use this command.');
-      }
+    // Check permissions for admin-only commands
+    if (command.adminOnly && !ADMIN_IDS.includes(message.author.id)) {
+        return message.reply('❌ You do not have permission to use this command.');
+    }
 
-      // Check command permissions
-      if (!ADMIN_IDS.includes(message.author.id) && !hasPermission(message.author.id, command.name)) {
-          return message.reply('❌ You do not have permission to use this command.');
-      }
+    // Check command permissions
+    if (!ADMIN_IDS.includes(message.author.id) && !hasPermission(message.author.id, command.name)) {
+        return message.reply('❌ You do not have permission to use this command.');
     }
     await command.execute(message, args);
   } catch (error) {
