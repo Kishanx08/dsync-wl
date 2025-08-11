@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { getMonitor } = require('./utils/statusMonitor');
 const fs = require('fs');
 const path = require('path');
 
@@ -78,6 +79,36 @@ client.on('interactionCreate', async interaction => {
       await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
     } else {
       await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+    }
+  }
+});
+
+// Handle button interactions (e.g., Players list)
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === 'show_players') {
+    try {
+      const monitor = getMonitor(client);
+      const names = await monitor.fetchPlayersList();
+
+      if (names === null) {
+        return interaction.reply({ content: 'Server is offline or unreachable right now.', ephemeral: true });
+      }
+
+      if (names.length === 0) {
+        return interaction.reply({ content: 'No players are currently online.', ephemeral: true });
+      }
+
+      const list = names.slice(0, 100).join('\n');
+      const extra = names.length > 100 ? `\n...and ${names.length - 100} more` : '';
+      return interaction.reply({ content: `Current players (${names.length}):\n${list}${extra}`.slice(0, 1900), ephemeral: true });
+    } catch (err) {
+      console.error('[BUTTON] show_players error:', err?.message || err);
+      if (interaction.replied || interaction.deferred) {
+        return interaction.followUp({ content: 'Failed to fetch players. Please try again shortly.', ephemeral: true });
+      }
+      return interaction.reply({ content: 'Failed to fetch players. Please try again shortly.', ephemeral: true });
     }
   }
 });

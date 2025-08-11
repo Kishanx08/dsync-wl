@@ -18,6 +18,10 @@ class FiveMStatusMonitor {
     this.lastKnownServerName = null;
   }
 
+  getBaseUrl() {
+    return `http://${this.ip}:${this.port}`;
+  }
+
   setChannel(channelId) {
     this.channelId = channelId;
   }
@@ -38,7 +42,7 @@ class FiveMStatusMonitor {
 
   async fetchServerData() {
     // FiveM info.json/players.json are served over HTTP, not HTTPS
-    const base = `http://172.105.48.231:30124`;
+    const base = this.getBaseUrl();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
@@ -97,7 +101,10 @@ class FiveMStatusMonitor {
       .setTimestamp(new Date());
 
     if (!status.online) {
-      embed.addFields({ name: 'Status', value: '🔴 Offline', inline: false });
+      embed.addFields(
+        { name: 'Status', value: '🔴 Offline', inline: false },
+        { name: 'Connect (F8)', value: `\`\`\`connect ${this.ip}:${this.port}\`\`\``, inline: false },
+      );
       return embed;
     }
 
@@ -111,9 +118,30 @@ class FiveMStatusMonitor {
       { name: 'Uptime', value: `${uptimeText}`, inline: true },
       { name: 'Version', value: `${status.version}`, inline: true },
       { name: 'Last Updated', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+      { name: 'Connect (F8)', value: `\`\`\`connect ${this.ip}:${this.port}\`\`\``, inline: false },
     );
 
     return embed;
+  }
+
+  async fetchPlayersList() {
+    const base = this.getBaseUrl();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await fetch(`${base}/players.json`, { signal: controller.signal });
+      if (!res.ok) throw new Error(`players.json HTTP ${res.status}`);
+      const players = await res.json();
+      if (!Array.isArray(players)) return [];
+      return players
+        .map(p => (typeof p?.name === 'string' ? p.name.trim() : ''))
+        .filter(name => name.length > 0);
+    } catch (err) {
+      console.error('[STATUS] Error fetching players list:', err?.message || err);
+      return null; // null indicates an error/offline
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   async ensureMessage() {
@@ -143,7 +171,11 @@ class FiveMStatusMonitor {
       }
 
       const embed = this.buildEmbed(status);
-      const connectRow = new ActionRowBuilder().addComponents(
+      const buttonsRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('show_players')
+          .setLabel('Players')
+          .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setLabel('Connect')
           .setStyle(ButtonStyle.Link)
@@ -151,7 +183,7 @@ class FiveMStatusMonitor {
       );
       const msg = await this.ensureMessage();
       if (!msg) return;
-      await msg.edit({ content: '', embeds: [embed], components: [connectRow] });
+      await msg.edit({ content: '', embeds: [embed], components: [buttonsRow] });
     } catch (_) {}
   }
 }
