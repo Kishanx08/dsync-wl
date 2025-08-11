@@ -1,5 +1,5 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const { EmbedBuilder, ChannelType } = require('discord.js');
+const { EmbedBuilder, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { isGiveAdmin } = require('./permissions');
 
 const DEFAULT_INTERVAL_MS = 60 * 1000;
@@ -15,6 +15,7 @@ class FiveMStatusMonitor {
     this.messageId = null;
     this.timer = null;
     this.uptimeStartMs = null; // reset when offline, set when first detect online
+    this.lastKnownServerName = null;
   }
 
   setChannel(channelId) {
@@ -36,7 +37,7 @@ class FiveMStatusMonitor {
   }
 
   async fetchServerData() {
-    const base = `http://172.105.48.231:30124`;
+    const base = `https://172.105.48.231:30124`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
@@ -68,6 +69,9 @@ class FiveMStatusMonitor {
       const version = info?.server || 'unknown';
       console.log(`[STATUS] ONLINE. serverName="${serverName}", players=${currentPlayers}/${maxPlayers}, version=${version}`);
 
+      // Remember last known server name for offline display
+      this.lastKnownServerName = serverName;
+
       return {
         online: true,
         serverName,
@@ -87,7 +91,8 @@ class FiveMStatusMonitor {
     const color = status.online ? 0x57F287 : 0xED4245; // green/red
     const embed = new EmbedBuilder()
       .setColor(color)
-      .setTitle(this.domain || `${this.ip}:${this.port}`)
+      .setTitle(status.serverName || this.lastKnownServerName || this.domain || `${this.ip}:${this.port}`)
+      .setThumbnail('https://kishann.x02.me/i/5ZVW.png')
       .setTimestamp(new Date());
 
     if (!status.online) {
@@ -101,10 +106,9 @@ class FiveMStatusMonitor {
 
     embed.addFields(
       { name: 'Status', value: '🟢 Online', inline: false },
-      { name: 'Server Name', value: `${status.serverName}`, inline: false },
       { name: 'Players', value: `${status.currentPlayers} / ${status.maxPlayers}`, inline: true },
-      { name: 'Version', value: `${status.version}`, inline: true },
       { name: 'Uptime', value: `${uptimeText}`, inline: true },
+      { name: 'Version', value: `${status.version}`, inline: true },
       { name: 'Last Updated', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
     );
 
@@ -138,9 +142,15 @@ class FiveMStatusMonitor {
       }
 
       const embed = this.buildEmbed(status);
+      const connectRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('Connect')
+          .setStyle(ButtonStyle.Link)
+          .setURL('https://cfx.re/join/rzdaox')
+      );
       const msg = await this.ensureMessage();
       if (!msg) return;
-      await msg.edit({ content: '', embeds: [embed] });
+      await msg.edit({ content: '', embeds: [embed], components: [connectRow] });
     } catch (_) {}
   }
 }
