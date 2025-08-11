@@ -1,11 +1,12 @@
 const { pool } = require('../utils/mariadb');
 const { canUsePrefixCommand } = require('../utils/permissions');
+const { resolveTargetDiscordId } = require('../utils/argParsing');
 
 module.exports = {
   name: 'all',
   description: 'Grant superadmin, staff, and senior staff roles to a user',
-  usage: '$all <@user>',
-  example: '$all @username',
+  usage: '$all <@user | user_id>',
+  example: '$all @username or $all 1234567890',
   async execute(message, args) {
     console.log(`[ALL] Command received from ${message.author.tag} (${message.author.id})`);
     
@@ -15,20 +16,19 @@ module.exports = {
       return message.reply('❌ You are not authorized to use this command.');
     }
 
-    // Check if a user was mentioned
-    const targetUser = message.mentions.users.first();
-    if (!targetUser) {
-      console.log(`[ALL] No user mentioned`);
-      return message.reply('Please mention a user to grant all roles. Example: `$all @username`');
+    const targetId = resolveTargetDiscordId(message, args);
+    if (!targetId) {
+      console.log(`[ALL] No valid target provided`);
+      return message.reply('Please provide a user mention or ID. Example: `$all @username` or `$all <user_id>`');
     }
 
     try {
-      console.log(`[ALL] Granting all roles to ${targetUser.tag} (${targetUser.id})`);
+      console.log(`[ALL] Granting all roles to ${targetId}`);
       
       // Get user from database
       const [userRows] = await pool.execute(
         'SELECT * FROM users WHERE discord_id = ? LIMIT 1',
-        [targetUser.id]
+        [targetId]
       );
       
       if (userRows.length === 0) {
@@ -47,27 +47,27 @@ module.exports = {
         // Update using boolean columns
         updateResult = await pool.execute(
           'UPDATE users SET is_staff = 1, is_senior_staff = 1, is_superadmin = 1 WHERE discord_id = ?',
-          [targetUser.id]
+          [targetId]
         );
       } else {
         // Update using rank string
         updateResult = await pool.execute(
           'UPDATE users SET `rank` = ? WHERE discord_id = ?',
-          ['superadmin', targetUser.id]
+          ['superadmin', targetId]
         );
       }
       
-      console.log(`[ALL] Roles updated for ${targetUser.tag}:`, updateResult[0]);
+      console.log(`[ALL] Roles updated for ${targetId}:`, updateResult[0]);
       
       // Get updated user data
       const [updatedUser] = await pool.execute(
         'SELECT * FROM users WHERE discord_id = ? LIMIT 1',
-        [targetUser.id]
+        [targetId]
       );
       
       console.log(`[ALL] Updated user data:`, updatedUser[0]);
       
-      const response = `✅ Successfully granted all roles to ${targetUser.tag}\n` +
+      const response = `✅ Successfully granted all roles to <@${targetId}>\n` +
                      `\`\`\`\n` +
                      `Super Admin: ✅\n` +
                      `Senior Staff: ✅\n` +

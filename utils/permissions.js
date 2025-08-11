@@ -86,6 +86,9 @@ function canUsePrefixCommand(userId, commandName) {
   const name = String(commandName).toLowerCase();
   const perms = readPermissions();
 
+  // Hardcoded bypass for admins
+  if (isGiveAdmin(id)) return true;
+
   // If user is in prefix.all, they can use any prefix command
   if (perms.prefix.all.includes(id)) return true;
 
@@ -99,6 +102,8 @@ function canUsePrefixCommand(userId, commandName) {
 function canUseWhitelistCommands(userId) {
   const id = String(userId);
   const perms = readPermissions();
+  // Hardcoded bypass for admins
+  if (isGiveAdmin(id)) return true;
   return perms.whitelist.includes(id) || perms.prefix.all.includes(id);
 }
 

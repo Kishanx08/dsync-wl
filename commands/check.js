@@ -69,8 +69,8 @@ async function getUserStaffInfo(license_identifier) {
 module.exports = {
   name: 'check',
   description: 'Check user status including ban, whitelist, and staff permissions',
-  usage: '$check <@user>',
-  example: '$check @Kishan',
+  usage: '$check <@user | user_id>',
+  example: '$check @Kishan or $check 1234567890',
   async execute(message, args) {
     console.log(`[CHECK] Command received from ${message.author.tag} (${message.author.id})`);
     
@@ -80,18 +80,18 @@ module.exports = {
       return message.reply('You do not have permission to use this command.');
     }
 
-    // Check if user was mentioned
-    const targetUser = message.mentions.users.first();
-    if (!targetUser) {
-      console.log(`[CHECK] No user mentioned`);
-      return message.reply('Please mention a user to check. Example: `$check @username`');
+    // Accept mention or raw ID
+    const targetId = (message.mentions.users.first()?.id) || (args[0] ? String(args[0]).replace(/\D/g, '') : null);
+    if (!targetId) {
+      console.log(`[CHECK] No valid target provided`);
+      return message.reply('Please provide a user mention or ID. Example: `$check @username` or `$check <user_id>`');
     }
 
     try {
-      console.log(`[CHECK] Checking status for user ${targetUser.tag} (${targetUser.id})`);
+      console.log(`[CHECK] Checking status for user ${targetId})`);
       
       // Get user from database
-      const userData = await getUserByDiscordId(targetUser.id);
+      const userData = await getUserByDiscordId(targetId);
       if (!userData || !userData.license_identifier) {
         console.log(`[CHECK] No user data found for ${targetUser.tag}`);
         return message.reply('This user is not registered in the database.');
@@ -122,9 +122,9 @@ module.exports = {
       const staffInfo = await getUserStaffInfo(userData.license_identifier);
 
       // Format the response
-      let response = `**User Check for ${targetUser.tag}**\n`;
+      let response = `**User Check for <@${targetId}>**\n`;
       response += `\`\`\`\n`;
-      response += `Discord ID: ${targetUser.id}\n`;
+      response += `Discord ID: ${targetId}\n`;
       response += `License ID: ${userData.license_identifier || 'N/A'}\n`;
       response += `\n`;
       response += `Ban Status: ${isBanned ? '❌ BANNED' : '✅ Not Banned'}\n`;

@@ -1,23 +1,22 @@
 const { pool } = require('../utils/mariadb');
 const { canUsePrefixCommand } = require('../utils/permissions');
+const { resolveTargetDiscordId } = require('../utils/argParsing');
 
 module.exports = {
     name: 'staff',
     description: 'Toggle staff status for a user',
-    usage: '$staff @user',
+    usage: '$staff @user | <user_id>',
     aliases: ['s'],
     
     async execute(message, args) {
         if (!canUsePrefixCommand(message.author.id, 'staff')) {
             return message.reply('❌ You do not have permission to use this command.');
         }
-        // Check if a user was mentioned
-        if (!message.mentions.users.size) {
-            return message.reply('❌ Please mention a user. Usage: `$staff @user`');
+        // Resolve target from mention or ID
+        const discordId = resolveTargetDiscordId(message, args);
+        if (!discordId) {
+            return message.reply('❌ Please provide a user mention or ID. Usage: `$staff @user` or `$staff <user_id>`');
         }
-        
-        const user = message.mentions.users.first();
-        const discordId = user.id;
 
         try {
             // Get current is_staff value
