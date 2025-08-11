@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { addLicense } = require('../utils/mariadb');
+const { logWhitelistAddition } = require('../utils/whitelistLogger');
 const { canUseWhitelistCommands } = require('../utils/permissions');
 
 module.exports = {
@@ -20,6 +21,8 @@ module.exports = {
     try {
       await addLicense(licenseId);
       await interaction.editReply({ content: `✅ License ID \`${licenseId}\` added to whitelist.` });
+      // Post in the log channel
+      setImmediate(() => logWhitelistAddition(interaction.client, licenseId));
     } catch (err) {
       if (err.code === 'ER_DUP_ENTRY') {
         await interaction.editReply({ content: '❌ This license ID is already whitelisted.' });

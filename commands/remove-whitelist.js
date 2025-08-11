@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { removeLicense } = require('../utils/mariadb');
+const { reactRemovalIfLogged } = require('../utils/whitelistLogger');
 const { canUseWhitelistCommands } = require('../utils/permissions');
 
 module.exports = {
@@ -21,6 +22,8 @@ module.exports = {
       const result = await removeLicense(licenseId);
       if (result.affectedRows > 0) {
         await interaction.editReply({ content: `✅ License ID \`${licenseId}\` removed from whitelist.` });
+        // React with ❌ on the previously logged message if present
+        setImmediate(() => reactRemovalIfLogged(interaction.client, licenseId));
       } else {
         await interaction.editReply({ content: '❌ License ID not found in whitelist.' });
       }
