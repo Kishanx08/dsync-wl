@@ -1,4 +1,5 @@
 const { isUserBanned, getUserByDiscordId, pool } = require('../utils/mariadb');
+const { canUsePrefixCommand } = require('../utils/permissions');
 
 async function isUserWhitelisted(license_identifier) {
   const sql = 'SELECT * FROM user_whitelist WHERE license_identifier = ? LIMIT 1';
@@ -73,8 +74,8 @@ module.exports = {
   async execute(message, args) {
     console.log(`[CHECK] Command received from ${message.author.tag} (${message.author.id})`);
     
-    // Check if user has permission
-    if (!message.member.roles.cache.some(role => ['seniorstaff', 'staff', 'superadmin'].includes(role.name.toLowerCase()))) {
+    // Check permission via file-backed permissions
+    if (!canUsePrefixCommand(message.author.id, 'check')) {
       console.log(`[CHECK] Permission denied for user ${message.author.tag}`);
       return message.reply('You do not have permission to use this command.');
     }

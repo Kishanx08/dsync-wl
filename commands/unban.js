@@ -1,4 +1,5 @@
 const { unbanUser, isUserBanned, getUserByDiscordId } = require('../utils/mariadb');
+const { canUsePrefixCommand } = require('../utils/permissions');
 
 module.exports = {
   name: 'unban',
@@ -8,17 +9,8 @@ module.exports = {
   async execute(message, args) {
     console.log(`[UNBAN] Command received from ${message.author.tag} (${message.author.id})`);
     
-    // Debug: Log all roles the user has
-    console.log(`[UNBAN] User roles:`, message.member.roles.cache.map(role => role.name));
-    
-    // Check if user has permission (case-insensitive check)
-    const hasPermission = message.member.roles.cache.some(role => {
-      const roleName = role.name.toLowerCase();
-      return ['seniorstaff', 'staff', 'superadmin'].some(allowedRole => 
-        roleName === allowedRole.toLowerCase()
-      );
-    });
-    
+    // Permission via file-backed permissions
+    const hasPermission = canUsePrefixCommand(message.author.id, 'unban');
     if (!hasPermission) {
       console.log(`[UNBAN] Permission denied for user ${message.author.tag} (${message.author.id})`);
       return message.reply('You do not have permission to use this command.');

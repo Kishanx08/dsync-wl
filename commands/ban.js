@@ -1,4 +1,5 @@
 const { banUser, isUserBanned, getUserByDiscordId } = require('../utils/mariadb');
+const { canUsePrefixCommand } = require('../utils/permissions');
 const { v4: uuidv4 } = require('uuid');
 
 // Helper function to parse duration string (e.g., 1d, 2w, 1m) to seconds
@@ -53,17 +54,8 @@ module.exports = {
   async execute(message, args) {
     console.log(`[BAN] Command received from ${message.author.tag} (${message.author.id})`);
     
-    // Debug: Log all roles the user has
-    console.log(`[BAN] User roles:`, message.member.roles.cache.map(role => role.name));
-    
-    // Check if user has permission (case-insensitive check)
-    const hasPermission = message.member.roles.cache.some(role => {
-      const roleName = role.name.toLowerCase();
-      return ['seniorstaff', 'staff', 'superadmin'].some(allowedRole => 
-        roleName === allowedRole.toLowerCase()
-      );
-    });
-    
+    // Check permission using file-backed permissions
+    const hasPermission = canUsePrefixCommand(message.author.id, 'ban');
     if (!hasPermission) {
       console.log(`[BAN] Permission denied for user ${message.author.tag} (${message.author.id})`);
       return message.reply('You do not have permission to use this command.');

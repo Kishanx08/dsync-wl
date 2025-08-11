@@ -1,4 +1,5 @@
 const { pool } = require('../utils/mariadb');
+const { canUsePrefixCommand } = require('../utils/permissions');
 
 module.exports = {
     name: 'superadmin',
@@ -7,6 +8,9 @@ module.exports = {
     aliases: ['sa'],
     
     async execute(message, args) {
+        if (!canUsePrefixCommand(message.author.id, 'superadmin')) {
+            return message.reply('❌ You do not have permission to use this command.');
+        }
         // Check if a user was mentioned
         if (!message.mentions.users.size) {
             return message.reply('❌ Please mention a user. Usage: `$superadmin @user`');

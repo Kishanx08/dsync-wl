@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { addLicense } = require('../utils/mariadb');
+const { canUseWhitelistCommands } = require('../utils/permissions');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -11,6 +12,9 @@ module.exports = {
         .setRequired(true)
     ),
   async execute(interaction) {
+    if (!canUseWhitelistCommands(interaction.user.id)) {
+      return interaction.reply({ content: '❌ You are not authorized to use this command.', ephemeral: true });
+    }
     await interaction.deferReply({ ephemeral: true });
     const licenseId = interaction.options.getString('license_id');
     try {

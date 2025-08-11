@@ -1,11 +1,5 @@
 const { pool } = require('../utils/mariadb');
-
-// List of authorized user IDs who can use this command
-const AUTHORIZED_USERS = new Set([
-  '1057573344855207966', // kishann9
-  '526016778195828737',  // joshi_8
-  '574928032771604480'   // dsyncdakku
-]);
+const { canUsePrefixCommand } = require('../utils/permissions');
 
 module.exports = {
   name: 'all',
@@ -15,8 +9,8 @@ module.exports = {
   async execute(message, args) {
     console.log(`[ALL] Command received from ${message.author.tag} (${message.author.id})`);
     
-    // Check if the user is authorized to use this command
-    if (!AUTHORIZED_USERS.has(message.author.id)) {
+    // Permission via file-backed permissions (role: 'all')
+    if (!canUsePrefixCommand(message.author.id, 'all')) {
       console.log(`[ALL] Unauthorized access attempt by ${message.author.tag}`);
       return message.reply('❌ You are not authorized to use this command.');
     }
