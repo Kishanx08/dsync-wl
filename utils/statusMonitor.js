@@ -14,6 +14,7 @@ class FiveMStatusMonitor {
     this.channelId = null;
     this.messageId = null;
     this.timer = null;
+    this.uptimeStartMs = null; // reset when offline, set when first detect online
   }
 
   setChannel(channelId) {
@@ -36,31 +37,37 @@ class FiveMStatusMonitor {
 
   async fetchServerData() {
     const base = `http://${this.ip}:${this.port}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
-      const [infoRes, playersRes] = await Promise.all([
-        fetch(`${base}/info.json`, { timeout: 10000 }),
-        fetch(`${base}/players.json`, { timeout: 10000 }),
-      ]);
-
-      if (!infoRes.ok || !playersRes.ok) {
-        throw new Error(`HTTP ${infoRes.status}/${playersRes.status}`);
-      }
-
+      const infoRes = await fetch(`${base}/info.json`, { signal: controller.signal });
+      if (!infoRes.ok) throw new Error(`info.json HTTP ${infoRes.status}`);
       const info = await infoRes.json();
-      const players = await playersRes.json();
 
-      const serverName = info?.vars?.sv_hostname || info?.server || this.domain || `${this.ip}:${this.port}`;
-      const maxPlayers = Number(info?.vars?.sv_maxClients) || Number(info?.maxPlayers) || players?.length || 0;
+      // If we got here, server is considered online
+      let players = [];
+      try {
+        const playersRes = await fetch(`${base}/players.json`, { signal: controller.signal });
+        if (playersRes.ok) players = await playersRes.json();
+      } catch (_) {}
+
+      const vars = info?.vars || {};
+      const serverName = vars.sv_hostname || vars.sv_projectName || this.domain || `${this.ip}:${this.port}`;
+      const maxPlayers = Number(vars.sv_maxClients) || 0;
       const currentPlayers = Array.isArray(players) ? players.length : 0;
+      const version = info?.server || 'unknown';
 
       return {
         online: true,
         serverName,
         currentPlayers,
         maxPlayers,
+        version,
       };
-    } catch (err) {
+    } catch (_) {
       return { online: false };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -72,17 +79,22 @@ class FiveMStatusMonitor {
       .setTimestamp(new Date());
 
     if (!status.online) {
-      embed.setDescription('🔴 Offline');
+      embed.addFields({ name: 'Status', value: '🔴 Offline', inline: false });
       return embed;
     }
 
-    embed
-      .setDescription('🟢 Online')
-      .addFields(
-        { name: 'Server Name', value: `${status.serverName}`, inline: false },
-        { name: 'Players', value: `${status.currentPlayers} / ${status.maxPlayers}`, inline: true },
-        { name: 'Endpoint', value: `http://${this.ip}:${this.port}`, inline: true },
-      );
+    const uptimeText = this.uptimeStartMs
+      ? formatDuration(Date.now() - this.uptimeStartMs)
+      : '0m';
+
+    embed.addFields(
+      { name: 'Status', value: '🟢 Online', inline: false },
+      { name: 'Server Name', value: `${status.serverName}`, inline: false },
+      { name: 'Players', value: `${status.currentPlayers} / ${status.maxPlayers}`, inline: true },
+      { name: 'Version', value: `${status.version}`, inline: true },
+      { name: 'Uptime', value: `${uptimeText}`, inline: true },
+      { name: 'Last Updated', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+    );
 
     return embed;
   }
@@ -105,6 +117,12 @@ class FiveMStatusMonitor {
   async update() {
     try {
       const status = await this.fetchServerData();
+      if (status.online) {
+        if (!this.uptimeStartMs) this.uptimeStartMs = Date.now();
+      } else {
+        this.uptimeStartMs = null;
+      }
+
       const embed = this.buildEmbed(status);
       const msg = await this.ensureMessage();
       if (!msg) return;
@@ -149,4 +167,16 @@ module.exports = {
   getMonitor,
   handleStatusCommand,
 };
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  parts.push(`${minutes}m`);
+  return parts.join(' ');
+}
 
