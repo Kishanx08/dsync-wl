@@ -40,22 +40,33 @@ class FiveMStatusMonitor {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
+      console.log(`[STATUS] Fetching info.json -> ${base}/info.json`);
       const infoRes = await fetch(`${base}/info.json`, { signal: controller.signal });
+      console.log(`[STATUS] info.json HTTP status: ${infoRes.status}`);
       if (!infoRes.ok) throw new Error(`info.json HTTP ${infoRes.status}`);
       const info = await infoRes.json();
+      console.log(`[STATUS] info.json parsed. Keys: ${Object.keys(info || {}).join(', ')}`);
 
       // If we got here, server is considered online
       let players = [];
       try {
+        console.log(`[STATUS] Fetching players.json -> ${base}/players.json`);
         const playersRes = await fetch(`${base}/players.json`, { signal: controller.signal });
-        if (playersRes.ok) players = await playersRes.json();
-      } catch (_) {}
+        console.log(`[STATUS] players.json HTTP status: ${playersRes.status}`);
+        if (playersRes.ok) {
+          players = await playersRes.json();
+          console.log(`[STATUS] players.json length: ${Array.isArray(players) ? players.length : 'N/A'}`);
+        }
+      } catch (err) {
+        console.error('[STATUS] Error fetching/decoding players.json:', err?.message || err);
+      }
 
       const vars = info?.vars || {};
       const serverName = vars.sv_hostname || vars.sv_projectName || this.domain || `${this.ip}:${this.port}`;
       const maxPlayers = Number(vars.sv_maxClients) || 0;
       const currentPlayers = Array.isArray(players) ? players.length : 0;
       const version = info?.server || 'unknown';
+      console.log(`[STATUS] ONLINE. serverName="${serverName}", players=${currentPlayers}/${maxPlayers}, version=${version}`);
 
       return {
         online: true,
@@ -64,7 +75,8 @@ class FiveMStatusMonitor {
         maxPlayers,
         version,
       };
-    } catch (_) {
+    } catch (err) {
+      console.error('[STATUS] OFFLINE or fetch error:', err?.message || err);
       return { online: false };
     } finally {
       clearTimeout(timeoutId);
@@ -119,8 +131,10 @@ class FiveMStatusMonitor {
       const status = await this.fetchServerData();
       if (status.online) {
         if (!this.uptimeStartMs) this.uptimeStartMs = Date.now();
+        console.log('[STATUS] Update: server ONLINE');
       } else {
         this.uptimeStartMs = null;
+        console.log('[STATUS] Update: server OFFLINE');
       }
 
       const embed = this.buildEmbed(status);
