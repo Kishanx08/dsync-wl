@@ -1,40 +1,53 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { getUserByDiscordId } = require('../utils/mariadb');
 
 function formatMinutes(totalMinutes) {
   const minutes = Number.isFinite(totalMinutes) ? Math.max(0, Math.floor(totalMinutes)) : 0;
-  const hours = Math.floor(minutes / 60);
-  const rem = minutes % 60;
-  return { minutes, hours, rem };
+  const days = Math.floor(minutes / (60 * 24));
+  const hours = Math.floor((minutes % (60 * 24)) / 60);
+  return { days, hours };
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('playtime')
-    .setDescription("Show your playtime as stored in the server's database"),
+    .setDescription("Show a user's playtime from the server database")
+    .addUserOption(option =>
+      option
+        .setName('user')
+        .setDescription('User to check (optional). Defaults to you.')
+        .setRequired(false)
+    ),
 
   async execute(interaction) {
     try {
-      const discordId = interaction.user.id;
+      const targetUser = interaction.options.getUser('user') || interaction.user;
+      const discordId = targetUser.id;
       const user = await getUserByDiscordId(discordId);
 
       if (!user) {
-        return interaction.reply({ content: '❌ Could not find your user record in the database.', ephemeral: true });
+        return interaction.reply({ content: `❌ Could not find a user record for <@${discordId}> in the database.` });
       }
 
       const minutes = user.playtime || 0;
-      const { hours, rem } = formatMinutes(minutes);
+      const { days, hours } = formatMinutes(minutes);
 
-      const response = `🕒 Playtime for <@${discordId}>\n` +
-        '```\n' +
-        `Total Minutes: ${minutes}\n` +
-        `Formatted: ${hours} hour(s) ${rem} minute(s)\n` +
-        '```';
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setAuthor({ name: `${targetUser.tag}`, iconURL: targetUser.displayAvatarURL({ size: 128 }) })
+        .setTitle('Playtime')
+        .setDescription('Playtime as recorded by the server')
+        .addFields(
+          { name: 'Days', value: `${days}`, inline: true },
+          { name: 'Hours', value: `${hours}`, inline: true },
+        )
+        .setThumbnail(targetUser.displayAvatarURL({ size: 128 }))
+        .setTimestamp();
 
-      return interaction.reply({ content: response });
+      return interaction.reply({ embeds: [embed] });
     } catch (err) {
       console.error('[PLAYTIME] Error:', err);
-      return interaction.reply({ content: '❌ An error occurred while fetching playtime.', ephemeral: true });
+      return interaction.reply({ content: '❌ An error occurred while fetching playtime.' });
     }
   },
 };
