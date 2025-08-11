@@ -1,5 +1,7 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const { EmbedBuilder, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 const { isGiveAdmin } = require('./permissions');
 
 const DEFAULT_INTERVAL_MS = 60 * 1000;
@@ -24,10 +26,12 @@ class FiveMStatusMonitor {
 
   setChannel(channelId) {
     this.channelId = channelId;
+    persistConfig({ channelId: this.channelId, messageId: this.messageId });
   }
 
   setMessage(messageId) {
     this.messageId = messageId;
+    persistConfig({ channelId: this.channelId, messageId: this.messageId });
   }
 
   start() {
@@ -156,6 +160,7 @@ class FiveMStatusMonitor {
 
     const placeholder = await channel.send({ content: 'Initializing server status...' });
     this.messageId = placeholder.id;
+    persistConfig({ channelId: this.channelId, messageId: this.messageId });
     return placeholder;
   }
 
@@ -223,6 +228,8 @@ async function handleStatusCommand(message, args, client) {
 module.exports = {
   getMonitor,
   handleStatusCommand,
+  // Expose helper used on startup
+  loadPersistedConfig: readConfigSafely,
 };
 
 function formatDuration(ms) {
@@ -236,4 +243,45 @@ function formatDuration(ms) {
   parts.push(`${minutes}m`);
   return parts.join(' ');
 }
+
+// -------------------- Persistence helpers --------------------
+const CONFIG_PATH = path.join(__dirname, '..', 'data', 'statusConfig.json');
+
+function readConfigSafely() {
+  try {
+    const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    return {
+      channelId: typeof parsed?.channelId === 'string' ? parsed.channelId : null,
+      messageId: typeof parsed?.messageId === 'string' ? parsed.messageId : null,
+    };
+  } catch (_) {
+    return { channelId: null, messageId: null };
+  }
+}
+
+function persistConfig({ channelId, messageId }) {
+  try {
+    const dir = path.dirname(CONFIG_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const existing = readConfigSafely();
+    const data = {
+      channelId: channelId ?? existing.channelId,
+      messageId: messageId ?? existing.messageId,
+    };
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[STATUS] Failed to persist config:', err?.message || err);
+  }
+}
+
+FiveMStatusMonitor.prototype.resumeFromStorage = async function resumeFromStorage() {
+  const saved = readConfigSafely();
+  if (saved.channelId) this.channelId = saved.channelId;
+  if (saved.messageId) this.messageId = saved.messageId;
+  // Ensure message exists or create a new placeholder (and persist it)
+  if (this.channelId) {
+    await this.ensureMessage();
+  }
+};
 

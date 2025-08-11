@@ -61,6 +61,19 @@ client.once('ready', async () => {
   } catch (error) {
     console.error('Error refreshing application (/) commands:', error);
   }
+
+  // Resume status monitor after restarts using persisted channel/message
+  try {
+    const monitor = getMonitor(client);
+    await monitor.resumeFromStorage();
+    if (monitor.channelId) {
+      await monitor.update();
+      monitor.start();
+      console.log('[STATUS] Monitor resumed after startup');
+    }
+  } catch (err) {
+    console.error('[STATUS] Failed to resume monitor:', err?.message || err);
+  }
 });
 
 // Handle slash command interactions
