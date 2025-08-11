@@ -37,7 +37,8 @@ class FiveMStatusMonitor {
   }
 
   async fetchServerData() {
-    const base = `https://172.105.48.231:30124`;
+    // FiveM info.json/players.json are served over HTTP, not HTTPS
+    const base = `http://172.105.48.231:30124`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
