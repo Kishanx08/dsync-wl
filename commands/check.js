@@ -70,7 +70,7 @@ module.exports = {
   name: 'check',
   description: 'Check user status including ban, whitelist, and staff permissions',
   usage: '$check <@user | user_id>',
-  example: '$check @Kishan or $check 1234567890',
+  example: '$check @Kishan or $check 1057573344855207966',
   async execute(message, args) {
     console.log(`[CHECK] Command received from ${message.author.tag} (${message.author.id})`);
     
@@ -93,7 +93,7 @@ module.exports = {
       // Get user from database
       const userData = await getUserByDiscordId(targetId);
       if (!userData || !userData.license_identifier) {
-        console.log(`[CHECK] No user data found for ${targetUser.tag}`);
+        console.log(`[CHECK] No user data found for ${targetId}`);
         return message.reply('This user is not registered in the database.');
       }
 
@@ -152,7 +152,7 @@ module.exports = {
       
       response += `\`\`\``;
       
-      console.log(`[CHECK] Sending user check results for ${targetUser.tag}`);
+      console.log(`[CHECK] Sending user check results for ${targetId}`);
       await message.reply(response);
       
     } catch (error) {
