@@ -36,7 +36,7 @@ class FiveMStatusMonitor {
   }
 
   async fetchServerData() {
-    const base = `http://${this.ip}:${this.port}`;
+    const base = `http://172.105.48.231:30124`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
