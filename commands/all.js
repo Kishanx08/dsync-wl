@@ -44,9 +44,9 @@ module.exports = {
       let updateResult;
       
       if (isNewFormat) {
-        // Update using boolean columns
+        // Update using boolean columns (align to preferred column names)
         updateResult = await pool.execute(
-          'UPDATE users SET is_staff = 1, is_senior_staff = 1, is_superadmin = 1 WHERE discord_id = ?',
+          'UPDATE users SET is_staff = 1, is_senior_staff = 1, is_super_admin = 1 WHERE discord_id = ?',
           [targetId]
         );
       } else {

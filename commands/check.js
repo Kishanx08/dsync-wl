@@ -27,13 +27,27 @@ async function getUserStaffInfo(license_identifier) {
     const isNewFormat = 'is_staff' in user;
     console.log(`[CHECK] Using ${isNewFormat ? 'new' : 'old'} format for permissions`);
     
+    // Helper to normalize DB truthy values (1/0, '1'/'0', true/false)
+    const toBoolean = (value) => {
+      if (value === true || value === false) return value;
+      if (value === 1 || value === 0) return value === 1;
+      if (value === '1' || value === '0') return value === '1';
+      // Fallback: treat non-null/non-undefined non-zero numbers as true
+      if (typeof value === 'number') return value !== 0;
+      if (typeof value === 'string') return value.toLowerCase() === 'true';
+      return false;
+    };
+
     // Get staff status based on format
     let isStaff, isSeniorStaff, isSuperAdmin;
     
     if (isNewFormat) {
-      isStaff = user.is_staff === 1 || user.is_staff === true;
-      isSeniorStaff = user.is_senior_staff === 1 || user.is_senior_staff === true;
-      isSuperAdmin = user.is_superadmin === 1 || user.is_superadmin === true;
+      isStaff = toBoolean(user.is_staff);
+      isSeniorStaff = toBoolean(user.is_senior_staff);
+      // Support both column names: is_super_admin (preferred) and is_superadmin (legacy)
+      const rawSuperAdminA = user.is_super_admin;
+      const rawSuperAdminB = user.is_superadmin;
+      isSuperAdmin = toBoolean(rawSuperAdminA) || toBoolean(rawSuperAdminB);
       
       // In case any of the fields are null/undefined, default to false
       isStaff = isStaff || false;
@@ -41,6 +55,7 @@ async function getUserStaffInfo(license_identifier) {
       isSuperAdmin = isSuperAdmin || false;
       
       console.log(`[CHECK] New format permissions - Staff: ${isStaff}, Senior: ${isSeniorStaff}, SuperAdmin: ${isSuperAdmin}`);
+      console.log(`[CHECK] Raw superadmin fields - is_super_admin:`, rawSuperAdminA, `| is_superadmin:`, rawSuperAdminB);
     } else {
       isStaff = user.rank === 'staff';
       isSeniorStaff = user.rank === 'seniorstaff';
