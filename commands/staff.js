@@ -2,6 +2,42 @@ const { pool } = require('../utils/mariadb');
 const { canUsePrefixCommand } = require('../utils/permissions');
 const { resolveTargetDiscordId } = require('../utils/argParsing');
 
+async function manageRole(guild, memberId, roleName, shouldHaveRole) {
+    if (!guild) return;
+    const member = await guild.members.fetch(memberId).catch(() => null);
+    if (!member) {
+        console.log(`[RoleManager] Could not find member with ID ${memberId}`);
+        return;
+    }
+
+    let role = guild.roles.cache.find(r => r.name === roleName);
+
+    if (shouldHaveRole) {
+        if (!role) {
+            try {
+                console.log(`[RoleManager] Role '${roleName}' not found, creating it.`);
+                role = await guild.roles.create({ name: roleName, reason: 'Auto-created by bot for permissions.' });
+            } catch (e) {
+                console.error(`[RoleManager] Failed to create role ${roleName}`, e);
+                return; 
+            }
+        }
+        if (role) {
+            if (!member.roles.cache.has(role.id)) {
+                console.log(`[RoleManager] Adding role '${roleName}' to ${member.user.tag}`);
+                await member.roles.add(role).catch(e => console.error(`[RoleManager] Failed to add role ${roleName} to ${member.user.tag}`, e));
+            }
+        }
+    } else { 
+        if (role) {
+            if (member.roles.cache.has(role.id)) {
+                console.log(`[RoleManager] Removing role '${roleName}' from ${member.user.tag}`);
+                await member.roles.remove(role).catch(e => console.error(`[RoleManager] Failed to remove role ${roleName} from ${member.user.tag}`, e));
+            }
+        }
+    }
+}
+
 module.exports = {
     name: 'staff',
     description: 'Toggle staff status for a user',
@@ -37,6 +73,8 @@ module.exports = {
                 [newValue, discordId]
             );
             
+            await manageRole(message.guild, discordId, 'staff perms', newValue === 1);
+
             if (newValue === 1) {
                 return message.reply(`✅ <@${discordId}> is now a staff member!`);
             } else {

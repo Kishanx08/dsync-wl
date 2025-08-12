@@ -29,11 +29,12 @@ function writeStore(store) {
   }
 }
 
-async function logWhitelistAddition(client, licenseId) {
+async function logWhitelistAddition(client, licenseId, user) {
   try {
     const channel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
     if (!channel) return null;
-    const content = `✅ Whitelisted license ID \`${licenseId}\``;
+    const whitelistedBy = user ? ` by <@${user.id}>` : '';
+    const content = `✅ Whitelisted license ID \`${licenseId}\`${whitelistedBy}`;
     const message = await channel.send({ content });
 
     const store = readStore();
