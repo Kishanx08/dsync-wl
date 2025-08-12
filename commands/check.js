@@ -38,6 +38,18 @@ async function getUserStaffInfo(license_identifier) {
       return false;
     };
 
+    // Helpers to format unix timestamps provided in seconds or milliseconds
+    const toMsEpoch = (value) => {
+      if (value === null || value === undefined) return null;
+      const num = Number(value);
+      if (!Number.isFinite(num) || num <= 0) return null;
+      return num < 1e12 ? num * 1000 : num; // assume seconds if below ~Sat Sep 09 2001 in ms
+    };
+    const formatEpoch = (value) => {
+      const ms = toMsEpoch(value);
+      return ms ? new Date(ms).toLocaleString() : 'Unknown';
+    };
+
     // Get staff status based on format
     let isStaff, isSeniorStaff, isSuperAdmin;
     
@@ -67,9 +79,10 @@ async function getUserStaffInfo(license_identifier) {
       isStaff,
       isSeniorStaff,
       isSuperAdmin,
-      lastSeen: user.last_seen ? new Date(user.last_seen).toLocaleString() : 'Never',
+      lastSeen: formatEpoch(user.last_seen) || 'Never',
+      lastConnection: formatEpoch(user.last_connection) || 'Unknown',
       playTime: user.playtime || '0 minutes',
-      joinDate: user.join_date ? new Date(user.join_date).toLocaleString() : 'Unknown',
+      joinDate: formatEpoch(user.join_date),
       // Add raw data for debugging
       _raw: user
     };
@@ -162,6 +175,7 @@ module.exports = {
         response += `- Super Admin: ${staffInfo.isSuperAdmin ? '✅' : '❌'}\n`;
         response += `- Join Date: ${staffInfo.joinDate}\n`;
         response += `- Last Seen: ${staffInfo.lastSeen}\n`;
+        response += `- Last Connection: ${staffInfo.lastConnection}\n`;
         response += `- Play Time: ${staffInfo.playTime}\n`;
       }
       
