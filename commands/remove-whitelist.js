@@ -16,7 +16,7 @@ module.exports = {
     if (!canUseWhitelistCommands(interaction.user.id)) {
       return interaction.reply({ content: '❌ You are not authorized to use this command.', ephemeral: true });
     }
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply();
     const licenseId = interaction.options.getString('license_id');
     try {
       const result = await removeLicense(licenseId);

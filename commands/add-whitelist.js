@@ -19,14 +19,14 @@ module.exports = {
     
     const licenseId = interaction.options.getString('license_id');
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply();
 
     try {
       const result = await addLicense(licenseId);
       
       // Check if license was already in the database
       if (result.affectedRows === 0) {
-        await interaction.editReply({ content: '❌ This license ID is already whitelisted.' });
+        await interaction.editReply({ content: `❌ This license ID is already whitelisted.` });
       } else {
         await interaction.editReply({ content: `✅ License ID \`${licenseId}\` added to whitelist.` });
         // Post in the log channel
