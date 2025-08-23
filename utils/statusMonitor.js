@@ -70,7 +70,7 @@ class FiveMStatusMonitor {
         console.error('[STATUS] Error fetching/decoding players.json:', err?.message || err);
       }
 
-      const serverName = this.domain || `${this.ip}:${this.port}`;
+      const serverName = "Dsync Dump";
       const maxPlayers = Number(serverMetrics.data?.maxPlayers) || 0;
       const currentPlayers = Number(serverMetrics.data?.playerCount) || 0;
       const version = serverMetrics.data?.version || 'unknown';
