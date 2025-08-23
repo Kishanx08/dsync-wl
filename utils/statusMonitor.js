@@ -16,7 +16,6 @@ class FiveMStatusMonitor {
     this.channelId = null;
     this.messageId = null;
     this.timer = null;
-    this.uptimeStartMs = null; // reset when offline, set when first detect online
     this.lastKnownServerName = null;
   }
 
@@ -45,17 +44,17 @@ class FiveMStatusMonitor {
   }
 
   async fetchServerData() {
-    // FiveM info.json/players.json are served over HTTP, not HTTPS
+    // FiveM serverMetrics.json/players.json are served over HTTP, not HTTPS
     const base = this.getBaseUrl();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
-      console.log(`[STATUS] Fetching info.json -> ${base}/info.json`);
-      const infoRes = await fetch(`${base}/info.json`, { signal: controller.signal });
-      console.log(`[STATUS] info.json HTTP status: ${infoRes.status}`);
-      if (!infoRes.ok) throw new Error(`info.json HTTP ${infoRes.status}`);
-      const info = await infoRes.json();
-      console.log(`[STATUS] info.json parsed. Keys: ${Object.keys(info || {}).join(', ')}`);
+      console.log(`[STATUS] Fetching serverMetrics.json -> ${base}/op-framework/serverMetrics.json`);
+      const serverMetricsRes = await fetch(`${base}/op-framework/serverMetrics.json`, { signal: controller.signal });
+      console.log(`[STATUS] serverMetrics.json HTTP status: ${serverMetricsRes.status}`);
+      if (!serverMetricsRes.ok) throw new Error(`serverMetrics.json HTTP ${serverMetricsRes.status}`);
+      const serverMetrics = await serverMetricsRes.json();
+      console.log(`[STATUS] serverMetrics.json parsed. Keys: ${Object.keys(serverMetrics || {}).join(', ')}`);
 
       // If we got here, server is considered online
       let players = [];
@@ -71,12 +70,12 @@ class FiveMStatusMonitor {
         console.error('[STATUS] Error fetching/decoding players.json:', err?.message || err);
       }
 
-      const vars = info?.vars || {};
-      const serverName = vars.sv_hostname || vars.sv_projectName || this.domain || `${this.ip}:${this.port}`;
-      const maxPlayers = Number(vars.sv_maxClients) || 0;
-      const currentPlayers = Array.isArray(players) ? players.length : 0;
-      const version = info?.server || 'unknown';
-      console.log(`[STATUS] ONLINE. serverName="${serverName}", players=${currentPlayers}/${maxPlayers}, version=${version}`);
+      const serverName = this.domain || `${this.ip}:${this.port}`;
+      const maxPlayers = Number(serverMetrics.maxClients) || 0;
+      const currentPlayers = Number(serverMetrics.playerCount) || 0;
+      const version = serverMetrics.version || 'unknown';
+      const uptime = serverMetrics.uptime || '0m';
+      console.log(`[STATUS] ONLINE. serverName="${serverName}", players=${currentPlayers}/${maxPlayers}, version=${version}, uptime=${uptime}`);
 
       // Remember last known server name for offline display
       this.lastKnownServerName = serverName;
@@ -87,6 +86,7 @@ class FiveMStatusMonitor {
         currentPlayers,
         maxPlayers,
         version,
+        uptime,
       };
     } catch (err) {
       console.error('[STATUS] OFFLINE or fetch error:', err?.message || err);
@@ -112,9 +112,7 @@ class FiveMStatusMonitor {
       return embed;
     }
 
-    const uptimeText = this.uptimeStartMs
-      ? formatDuration(Date.now() - this.uptimeStartMs)
-      : '0m';
+    const uptimeText = status.uptime || '0m';
 
     embed.addFields(
       { name: 'Status', value: '🟢 Online', inline: false },
@@ -168,10 +166,8 @@ class FiveMStatusMonitor {
     try {
       const status = await this.fetchServerData();
       if (status.online) {
-        if (!this.uptimeStartMs) this.uptimeStartMs = Date.now();
         console.log('[STATUS] Update: server ONLINE');
       } else {
-        this.uptimeStartMs = null;
         console.log('[STATUS] Update: server OFFLINE');
       }
 
@@ -232,17 +228,6 @@ module.exports = {
   loadPersistedConfig: readConfigSafely,
 };
 
-function formatDuration(ms) {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const parts = [];
-  if (days) parts.push(`${days}d`);
-  if (hours) parts.push(`${hours}h`);
-  parts.push(`${minutes}m`);
-  return parts.join(' ');
-}
 
 // -------------------- Persistence helpers --------------------
 const CONFIG_PATH = path.join(__dirname, '..', 'data', 'statusConfig.json');
