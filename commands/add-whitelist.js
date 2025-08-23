@@ -3,9 +3,6 @@ const { addLicense } = require('../utils/mariadb');
 const { logWhitelistAddition } = require('../utils/whitelistLogger');
 const { canUseWhitelistCommands } = require('../utils/permissions');
 
-// Simple in-memory lock to prevent race conditions
-const lockedLicenses = new Set();
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('add_whitelist')
@@ -22,33 +19,21 @@ module.exports = {
     
     const licenseId = interaction.options.getString('license_id');
 
-    // --- Lock Mechanism ---
-    if (lockedLicenses.has(licenseId)) {
-      return interaction.reply({ 
-        content: 'Another operation for this license ID is already in progress. Please try again in a moment.',
-        ephemeral: true 
-      });
-    }
-    lockedLicenses.add(licenseId);
-    // --- End Lock Mechanism ---
-
     await interaction.deferReply({ ephemeral: true });
 
     try {
-      await addLicense(licenseId);
-      await interaction.editReply({ content: `✅ License ID \`${licenseId}\` added to whitelist.` });
-      // Post in the log channel
-      setImmediate(() => logWhitelistAddition(interaction.client, licenseId, interaction.user));
-    } catch (err) {
-      if (err.code === 'ER_DUP_ENTRY') {
+      const result = await addLicense(licenseId);
+      
+      // Check if license was already in the database
+      if (result.affectedRows === 0) {
         await interaction.editReply({ content: '❌ This license ID is already whitelisted.' });
       } else {
-        await interaction.editReply({ content: `❌ Error adding license: ${err.message}` });
+        await interaction.editReply({ content: `✅ License ID \`${licenseId}\` added to whitelist.` });
+        // Post in the log channel
+        setImmediate(() => logWhitelistAddition(interaction.client, licenseId, interaction.user));
       }
-    } finally {
-      // --- Unlock ---
-      lockedLicenses.delete(licenseId);
-      // --- End Unlock ---
+    } catch (err) {
+      await interaction.editReply({ content: `❌ Error adding license: ${err.message}` });
     }
   },
 };

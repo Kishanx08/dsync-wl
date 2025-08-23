@@ -12,9 +12,19 @@ const pool = mysql.createPool({
 });
 
 async function addLicense(license_identifier) {
-  const sql = 'INSERT INTO user_whitelist (license_identifier) VALUES (?)';
+  // Check if license already exists
+  const checkSql = 'SELECT COUNT(*) as count FROM user_whitelist WHERE license_identifier = ?';
+  const [checkResult] = await pool.execute(checkSql, [license_identifier]);
+  
+  if (checkResult[0].count > 0) {
+    // License already exists, return a special result
+    return { affectedRows: 0, message: 'License already exists' };
+  }
+  
+  // License doesn't exist, proceed with insertion
+  const insertSql = 'INSERT INTO user_whitelist (license_identifier) VALUES (?)';
   try {
-    const [result] = await pool.execute(sql, [license_identifier]);
+    const [result] = await pool.execute(insertSql, [license_identifier]);
     return result;
   } catch (err) {
     throw err;
