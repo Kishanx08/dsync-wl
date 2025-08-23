@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { isGiveAdmin } = require('./permissions');
 
-const DEFAULT_INTERVAL_MS = 60 * 1000;
+const DEFAULT_INTERVAL_MS = 30 * 1000;
 
 class FiveMStatusMonitor {
   constructor(client, options) {
@@ -218,7 +218,7 @@ async function handleStatusCommand(message, args, client) {
   await monitor.update();
   monitor.start();
 
-  return message.reply(`✅ Status monitor configured for <#${channelId}>. Updating every 1 minute.`);
+  return message.reply(`✅ Status monitor configured for <#${channelId}>. Updating every 30 seconds.`);
 }
 
 module.exports = {
