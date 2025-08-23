@@ -106,7 +106,7 @@ class FiveMStatusMonitor {
 
     if (!status.online) {
       embed.addFields(
-        { name: 'Status', value: '🔴 Offline', inline: false },
+        { name: 'Status', value: '**<:offline_ids:1408889453698748539> Offline**', inline: false },
         { name: 'Connect (F8)', value: `\`\`\`connect ${this.ip}:${this.port}\`\`\``, inline: false },
       );
       return embed;
@@ -115,7 +115,7 @@ class FiveMStatusMonitor {
     const uptimeText = status.uptime || '0m';
 
     embed.addFields(
-      { name: 'Status', value: '🟢 Online', inline: false },
+      { name: 'Status', value: '**<a:GreenDot:1408889190946570260> Online**', inline: false },
       { name: 'Players', value: `${status.currentPlayers} / ${status.maxPlayers}`, inline: true },
       { name: 'Uptime', value: `${uptimeText}`, inline: true },
       { name: 'Version', value: `${status.version}`, inline: true },
