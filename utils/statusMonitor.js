@@ -71,10 +71,10 @@ class FiveMStatusMonitor {
       }
 
       const serverName = this.domain || `${this.ip}:${this.port}`;
-      const maxPlayers = Number(serverMetrics.maxClients) || 0;
-      const currentPlayers = Number(serverMetrics.playerCount) || 0;
-      const version = serverMetrics.version || 'unknown';
-      const uptime = serverMetrics.uptime || '0m';
+      const maxPlayers = Number(serverMetrics.data?.maxPlayers) || 0;
+      const currentPlayers = Number(serverMetrics.data?.playerCount) || 0;
+      const version = serverMetrics.data?.version || 'unknown';
+      const uptime = serverMetrics.data?.uptime || '0m';
       console.log(`[STATUS] ONLINE. serverName="${serverName}", players=${currentPlayers}/${maxPlayers}, version=${version}, uptime=${uptime}`);
 
       // Remember last known server name for offline display
