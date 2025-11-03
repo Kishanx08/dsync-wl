@@ -5,6 +5,7 @@ const path = require('path');
 const { isGiveAdmin } = require('./permissions');
 
 const DEFAULT_INTERVAL_MS = 30 * 1000;
+const PLAYERS_INTERVAL_MS = 5 * 1000;
 
 class FiveMStatusMonitor {
   constructor(client, options) {
@@ -190,6 +191,7 @@ class FiveMStatusMonitor {
 }
 
 let monitorInstance = null;
+let playersMonitors = new Map(); // channelId -> monitor
 
 function getMonitor(client) {
   if (!monitorInstance) {
@@ -200,6 +202,228 @@ function getMonitor(client) {
     });
   }
   return monitorInstance;
+}
+
+class FiveMPlayersMonitor {
+  constructor(client, channelId) {
+    this.client = client;
+    this.channelId = channelId;
+    this.url = null;
+    this.messageIds = []; // Array of message IDs for multiple embeds
+    this.timer = null;
+    this.intervalMs = PLAYERS_INTERVAL_MS;
+  }
+
+  setUrl(url) {
+    this.url = url;
+  }
+
+  setChannel(channelId) {
+    this.channelId = channelId;
+    persistPlayersConfig(channelId, { url: this.url, messageId: this.messageId });
+  }
+
+  setMessages(messageIds) {
+    this.messageIds = messageIds;
+    persistPlayersConfig(this.channelId, { url: this.url, messageIds: this.messageIds });
+  }
+
+  start() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = setInterval(() => this.update().catch(() => {}), this.intervalMs);
+  }
+
+  stop() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  async fetchPlayersData() {
+    if (!this.url) return { online: false };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    try {
+      console.log(`[PLAYERS] Fetching players.json -> ${this.url}`);
+      const res = await fetch(this.url, { signal: controller.signal });
+      console.log(`[PLAYERS] players.json HTTP status: ${res.status}`);
+      if (!res.ok) throw new Error(`players.json HTTP ${res.status}`);
+      const players = await res.json();
+      console.log(`[PLAYERS] players.json length: ${Array.isArray(players) ? players.length : 'N/A'}`);
+
+      return {
+        online: true,
+        players: Array.isArray(players) ? players : [],
+      };
+    } catch (err) {
+      console.error('[PLAYERS] Error fetching players.json:', err?.message || err);
+      return { online: false };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  buildEmbeds(data) {
+    const color = data.online ? 0x57F287 : 0xED4245; // green/red
+    const embeds = [];
+
+    if (!data.online) {
+      const embed = new EmbedBuilder()
+        .setColor(color)
+        .setTitle('FiveM Server Players')
+        .setThumbnail('https://kishann.x02.me/i/5ZVW.png')
+        .setTimestamp(new Date())
+        .addFields(
+          { name: 'Status', value: '**<:offline_ids:1408889453698748539> Server Offline**', inline: false },
+        );
+      embeds.push(embed);
+      return embeds;
+    }
+
+    const players = data.players;
+    const playerCount = players.length;
+
+    // Sort players by ID
+    const sortedPlayers = players
+      .sort((a, b) => (a.id || 0) - (b.id || 0))
+      .map(p => `${p.id || 'N/A'}: ${p.name || 'Unknown'}`);
+
+    // Split into chunks of 20 players each
+    const chunks = [];
+    for (let i = 0; i < sortedPlayers.length; i += 20) {
+      chunks.push(sortedPlayers.slice(i, i + 20));
+    }
+
+    // Create embeds for each chunk
+    chunks.forEach((chunk, index) => {
+      const embed = new EmbedBuilder()
+        .setColor(color)
+        .setTitle(index === 0 ? 'FiveM Server Players' : `FiveM Server Players (Page ${index + 1})`)
+        .setThumbnail('https://kishann.x02.me/i/5ZVW.png')
+        .setTimestamp(new Date());
+
+      if (index === 0) {
+        embed.addFields(
+          { name: 'Status', value: '**<a:GreenDot:1408889190946570260> Online**', inline: false },
+          { name: 'Players Online', value: `${playerCount}`, inline: true },
+          { name: 'Last Updated', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+        );
+      }
+
+      const playerList = chunk.join('\n');
+      embed.addFields({
+        name: index === 0 ? 'Player List' : `Players (Page ${index + 1})`,
+        value: playerCount > 0 ? `\`\`\`${playerList}\`\`\`` : 'No players online',
+        inline: false
+      });
+
+      embeds.push(embed);
+    });
+
+    // If no players, create a single embed
+    if (chunks.length === 0) {
+      const embed = new EmbedBuilder()
+        .setColor(color)
+        .setTitle('FiveM Server Players')
+        .setThumbnail('https://kishann.x02.me/i/5ZVW.png')
+        .setTimestamp(new Date())
+        .addFields(
+          { name: 'Status', value: '**<a:GreenDot:1408889190946570260> Online**', inline: false },
+          { name: 'Players Online', value: `${playerCount}`, inline: true },
+          { name: 'Last Updated', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+          { name: 'Player List', value: 'No players online', inline: false }
+        );
+      embeds.push(embed);
+    }
+
+    return embeds;
+  }
+
+  async ensureMessages() {
+    if (!this.channelId) return [];
+    const channel = await this.client.channels.fetch(this.channelId).catch(() => null);
+    if (!channel || channel.type !== ChannelType.GuildText) return [];
+
+    const messages = [];
+    const placeholders = [];
+
+    // Check existing messages
+    for (let i = 0; i < this.messageIds.length; i++) {
+      const msgId = this.messageIds[i];
+      const msg = await channel.messages.fetch(msgId).catch(() => null);
+      if (msg) {
+        messages.push(msg);
+      } else {
+        // Message was deleted, we'll recreate later
+        this.messageIds.splice(i, 1);
+        i--;
+      }
+    }
+
+    // If no messages exist, create initial placeholder
+    if (messages.length === 0) {
+      const placeholder = await channel.send({ content: 'Initializing players monitor...' });
+      placeholders.push(placeholder);
+      this.messageIds = [placeholder.id];
+      persistPlayersConfig(this.channelId, { url: this.url, messageIds: this.messageIds });
+    }
+
+    return messages.length > 0 ? messages : placeholders;
+  }
+
+  async update() {
+    try {
+      const data = await this.fetchPlayersData();
+      if (data.online) {
+        console.log(`[PLAYERS] Update: ${data.players.length} players online`);
+      } else {
+        console.log('[PLAYERS] Update: server OFFLINE');
+      }
+
+      const embeds = this.buildEmbeds(data);
+      const currentMessages = await this.ensureMessages();
+
+      // Adjust number of messages based on required embeds
+      const requiredMessages = embeds.length;
+
+      if (currentMessages.length < requiredMessages) {
+        // Need more messages
+        const channel = await this.client.channels.fetch(this.channelId);
+        for (let i = currentMessages.length; i < requiredMessages; i++) {
+          const newMsg = await channel.send({ content: 'Loading...' });
+          currentMessages.push(newMsg);
+          this.messageIds.push(newMsg.id);
+        }
+        persistPlayersConfig(this.channelId, { url: this.url, messageIds: this.messageIds });
+      } else if (currentMessages.length > requiredMessages) {
+        // Need fewer messages, delete extras
+        for (let i = requiredMessages; i < currentMessages.length; i++) {
+          try {
+            await currentMessages[i].delete();
+          } catch (err) {
+            console.error('[PLAYERS] Failed to delete message:', err?.message || err);
+          }
+        }
+        this.messageIds = this.messageIds.slice(0, requiredMessages);
+        currentMessages.splice(requiredMessages);
+        persistPlayersConfig(this.channelId, { url: this.url, messageIds: this.messageIds });
+      }
+
+      // Update all messages with their corresponding embeds
+      for (let i = 0; i < currentMessages.length; i++) {
+        await currentMessages[i].edit({ content: '', embeds: [embeds[i]] });
+      }
+    } catch (err) {
+      console.error('[PLAYERS] Update error:', err?.message || err);
+    }
+  }
+}
+
+function getPlayersMonitor(client, channelId) {
+  if (!playersMonitors.has(channelId)) {
+    playersMonitors.set(channelId, new FiveMPlayersMonitor(client, channelId));
+  }
+  return playersMonitors.get(channelId);
 }
 
 async function handleStatusCommand(message, args, client) {
@@ -223,6 +447,7 @@ async function handleStatusCommand(message, args, client) {
 
 module.exports = {
   getMonitor,
+  getPlayersMonitor,
   handleStatusCommand,
   // Expose helper used on startup
   loadPersistedConfig: readConfigSafely,
@@ -231,6 +456,7 @@ module.exports = {
 
 // -------------------- Persistence helpers --------------------
 const CONFIG_PATH = path.join(__dirname, '..', 'data', 'statusConfig.json');
+const PLAYERS_CONFIG_PATH = path.join(__dirname, '..', 'data', 'playersConfig.json');
 
 function readConfigSafely() {
   try {
@@ -267,6 +493,44 @@ FiveMStatusMonitor.prototype.resumeFromStorage = async function resumeFromStorag
   // Ensure message exists or create a new placeholder (and persist it)
   if (this.channelId) {
     await this.ensureMessage();
+  }
+};
+
+function readPlayersConfigSafely() {
+  try {
+    const raw = fs.readFileSync(PLAYERS_CONFIG_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function persistPlayersConfig(channelId, { url, messageIds }) {
+  try {
+    const dir = path.dirname(PLAYERS_CONFIG_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const existing = readPlayersConfigSafely();
+    existing[channelId] = {
+      url: url ?? existing[channelId]?.url,
+      messageIds: messageIds ?? existing[channelId]?.messageIds ?? [],
+    };
+    fs.writeFileSync(PLAYERS_CONFIG_PATH, JSON.stringify(existing, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[PLAYERS] Failed to persist config:', err?.message || err);
+  }
+}
+
+FiveMPlayersMonitor.prototype.resumeFromStorage = async function resumeFromStorage() {
+  const saved = readPlayersConfigSafely();
+  const config = saved[this.channelId];
+  if (config) {
+    if (config.url) this.url = config.url;
+    if (config.messageIds) this.messageIds = config.messageIds;
+    // Ensure messages exist or create new placeholders (and persist them)
+    if (this.channelId) {
+      await this.ensureMessages();
+    }
   }
 };
 

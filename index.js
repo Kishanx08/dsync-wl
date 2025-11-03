@@ -74,6 +74,29 @@ client.once('ready', async () => {
   } catch (err) {
     console.error('[STATUS] Failed to resume monitor:', err?.message || err);
   }
+
+  // Resume players monitors after restarts
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { getPlayersMonitor } = require('./utils/statusMonitor');
+    const playersConfigPath = path.join(__dirname, 'data', 'playersConfig.json');
+    if (fs.existsSync(playersConfigPath)) {
+      const playersConfig = JSON.parse(fs.readFileSync(playersConfigPath, 'utf8'));
+      for (const [channelId, config] of Object.entries(playersConfig)) {
+        if (config.url) {
+          const playersMonitor = getPlayersMonitor(client, channelId);
+          playersMonitor.setUrl(config.url);
+          await playersMonitor.resumeFromStorage();
+          await playersMonitor.update();
+          playersMonitor.start();
+          console.log(`[PLAYERS] Monitor resumed for channel ${channelId}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[PLAYERS] Failed to resume monitors:', err?.message || err);
+  }
 });
 
 // Handle slash command interactions
