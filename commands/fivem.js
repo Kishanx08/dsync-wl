@@ -1,5 +1,5 @@
 const { EmbedBuilder, ChannelType } = require('discord.js');
-const { getPlayersMonitor } = require('../utils/statusMonitor');
+const { getPlayersMonitor, stopPlayersMonitor } = require('../utils/statusMonitor');
 
 module.exports = {
   name: 'fivem',
@@ -11,9 +11,28 @@ module.exports = {
       return message.reply('❌ You are not authorized to use this command.');
     }
 
+    const subcommand = args[0]?.toLowerCase();
+
+    if (subcommand === 'stop') {
+      // Stop monitoring
+      const channelMention = message.mentions.channels.first();
+      if (!channelMention) {
+        return message.reply('Usage: `$fivem stop <#channel>`');
+      }
+
+      const channelId = channelMention.id;
+      const stopped = stopPlayersMonitor(channelId);
+
+      if (stopped) {
+        return message.reply(`✅ Players monitor stopped for <#${channelId}>.`);
+      } else {
+        return message.reply(`❌ No active players monitor found for <#${channelId}>.`);
+      }
+    }
+
     // Parse arguments: URL and channel mention
     if (args.length < 2) {
-      return message.reply('Usage: `$fivem <players.json URL> <#channel>`\nExample: `$fivem http://45.79.124.203:30120/players.json #players-channel`');
+      return message.reply('Usage: `$fivem <players.json URL> <#channel>` or `$fivem stop <#channel>`\nExample: `$fivem http://45.79.124.203:30120/players.json #players-channel`');
     }
 
     const url = args[0];

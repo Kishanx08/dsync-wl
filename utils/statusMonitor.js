@@ -401,7 +401,10 @@ class FiveMPlayersMonitor {
           try {
             await currentMessages[i].delete();
           } catch (err) {
-            console.error('[PLAYERS] Failed to delete message:', err?.message || err);
+            // Ignore "Unknown Message" errors as the message might already be deleted
+            if (!err?.message?.includes('Unknown Message')) {
+              console.error('[PLAYERS] Failed to delete message:', err?.message || err);
+            }
           }
         }
         this.messageIds = this.messageIds.slice(0, requiredMessages);
@@ -411,7 +414,14 @@ class FiveMPlayersMonitor {
 
       // Update all messages with their corresponding embeds
       for (let i = 0; i < currentMessages.length; i++) {
-        await currentMessages[i].edit({ content: '', embeds: [embeds[i]] });
+        try {
+          await currentMessages[i].edit({ content: '', embeds: [embeds[i]] });
+        } catch (err) {
+          // Ignore "Unknown Message" errors as the message might have been deleted
+          if (!err?.message?.includes('Unknown Message')) {
+            console.error('[PLAYERS] Failed to edit message:', err?.message || err);
+          }
+        }
       }
     } catch (err) {
       console.error('[PLAYERS] Update error:', err?.message || err);
@@ -424,6 +434,16 @@ function getPlayersMonitor(client, channelId) {
     playersMonitors.set(channelId, new FiveMPlayersMonitor(client, channelId));
   }
   return playersMonitors.get(channelId);
+}
+
+function stopPlayersMonitor(channelId) {
+  const monitor = playersMonitors.get(channelId);
+  if (monitor) {
+    monitor.stop();
+    playersMonitors.delete(channelId);
+    return true;
+  }
+  return false;
 }
 
 async function handleStatusCommand(message, args, client) {
@@ -448,6 +468,7 @@ async function handleStatusCommand(message, args, client) {
 module.exports = {
   getMonitor,
   getPlayersMonitor,
+  stopPlayersMonitor,
   handleStatusCommand,
   // Expose helper used on startup
   loadPersistedConfig: readConfigSafely,
