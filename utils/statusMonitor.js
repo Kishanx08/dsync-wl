@@ -350,8 +350,8 @@ class FiveMPlayersMonitor {
         .sort((a, b) => (a.id || 0) - (b.id || 0))
         .map(p => `${p.id || 'N/A'}: ${p.name || 'Unknown'}`);
 
-      // Split into chunks of 15 players each (reduced to prevent size limits)
-      const PLAYERS_PER_CHUNK = 15;
+      // Split into chunks of 40 players each (reduced to prevent size limits)
+      const PLAYERS_PER_CHUNK = 40;
       const chunks = [];
       for (let i = 0; i < sortedPlayers.length; i += PLAYERS_PER_CHUNK) {
         chunks.push(sortedPlayers.slice(i, i + PLAYERS_PER_CHUNK));
