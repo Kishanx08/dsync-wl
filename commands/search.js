@@ -59,7 +59,7 @@ module.exports = {
 
 async function fetchPlayersData() {
   // Use the same server URL as the status monitor
-  const baseUrl = 'http://172.105.48.231:30124'; // Same as in statusMonitor.js getMonitor
+  const baseUrl = 'http://45.79.124.203:30120'; // Same as in statusMonitor.js getMonitor
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
