@@ -195,10 +195,19 @@ client.on('messageCreate', async message => {
   try {
     const { readLiveConfig } = require('./commands/live');
     const liveConfig = readLiveConfig();
-    const configKey = `${message.guild.id}_${message.channel.id}`;
 
-    const config = liveConfig[configKey];
-    if (!config) return; // No forwarding configured for this channel
+    // Check for both channel-specific and server-wide forwarding
+    let config = null;
+    const channelSpecificKey = `${message.guild.id}_${message.channel.id}`;
+    const serverWideKey = `${message.guild.id}_server`;
+
+    if (liveConfig[channelSpecificKey]) {
+      config = liveConfig[channelSpecificKey];
+    } else if (liveConfig[serverWideKey]) {
+      config = liveConfig[serverWideKey];
+    }
+
+    if (!config) return; // No forwarding configured
 
     // Don't forward messages from the target channel to avoid loops
     if (message.channel.id === config.targetChannelId) return;
@@ -212,30 +221,114 @@ client.on('messageCreate', async message => {
 
     // Create embed for the forwarded message
     const embed = new EmbedBuilder()
-      .setColor(0x5865F2) // Discord blurple
+      .setColor(message.member?.displayColor || 0x5865F2) // Use role color or Discord blurple
       .setAuthor({
         name: `${message.author.username}#${message.author.discriminator}`,
         iconURL: message.author.displayAvatarURL({ dynamic: true, size: 256 })
       })
-      .setDescription(message.content || '*No text content*')
       .addFields(
-        { name: 'User ID', value: message.author.id, inline: true },
+        { name: 'User ID', value: `\`${message.author.id}\``, inline: true },
         { name: 'Server', value: message.guild.name, inline: true },
         { name: 'Channel', value: `#${message.channel.name}`, inline: true }
       )
       .setTimestamp(message.createdTimestamp)
-      .setFooter({ text: 'Live Forward' });
+      .setFooter({
+        text: `Live Forward • ${config.type === 'server' ? 'Server-wide' : 'Channel-specific'}`,
+        iconURL: message.guild.iconURL({ dynamic: true, size: 32 })
+      });
 
-    // Add attachments if any
-    if (message.attachments.size > 0) {
-      const attachment = message.attachments.first();
-      embed.setImage(attachment.url);
+    // Handle message content and attachments
+    let content = message.content || '';
+    const attachments = message.attachments;
+    const embeds = message.embeds;
+
+    // Add text content if present
+    if (content) {
+      // Truncate if too long for embed description
+      if (content.length > 4096) {
+        content = content.substring(0, 4093) + '...';
+      }
+      embed.setDescription(content);
+    } else if (attachments.size === 0 && embeds.length === 0) {
+      embed.setDescription('*No text content*');
     }
 
-    // Send the embed to target channel
-    await targetChannel.send({ embeds: [embed] });
+    // Handle attachments (images, files, videos)
+    if (attachments.size > 0) {
+      const attachment = attachments.first();
+      const isImage = attachment.contentType?.startsWith('image/');
+      const isVideo = attachment.contentType?.startsWith('video/');
 
-    console.log(`[LIVE] Forwarded message from ${message.author.tag} in ${message.guild.name}#${message.channel.name} to #${targetChannel.name}`);
+      if (isImage) {
+        embed.setImage(attachment.url);
+      } else if (isVideo) {
+        embed.addFields({
+          name: 'Video',
+          value: `[${attachment.name}](${attachment.url})`,
+          inline: false
+        });
+      } else {
+        embed.addFields({
+          name: 'Attachment',
+          value: `[${attachment.name}](${attachment.url}) (${Math.round(attachment.size / 1024)} KB)`,
+          inline: false
+        });
+      }
+
+      // Add additional attachments if any
+      if (attachments.size > 1) {
+        const otherAttachments = attachments.map(att => `[${att.name}](${att.url})`).slice(1);
+        embed.addFields({
+          name: 'Additional Files',
+          value: otherAttachments.join('\n'),
+          inline: false
+        });
+      }
+    }
+
+    // Handle original embeds from the message
+    if (embeds.length > 0) {
+      // Add a note about original embeds
+      embed.addFields({
+        name: 'Original Embeds',
+        value: `This message contained ${embeds.length} embed(s)`,
+        inline: false
+      });
+    }
+
+    // Handle stickers
+    if (message.stickers.size > 0) {
+      const stickerNames = message.stickers.map(s => s.name).join(', ');
+      embed.addFields({
+        name: 'Stickers',
+        value: stickerNames,
+        inline: false
+      });
+    }
+
+    // Prepare message to send
+    const messageOptions = { embeds: [embed] };
+
+    // If the original message had embeds, try to include them (but limit to avoid hitting limits)
+    if (embeds.length > 0 && embeds.length <= 2) {
+      // Clone the original embeds and modify them slightly
+      const forwardedEmbeds = embeds.map(originalEmbed => {
+        const newEmbed = EmbedBuilder.from(originalEmbed);
+        // Add a small footer to indicate it's forwarded
+        newEmbed.setFooter({
+          text: `Forwarded from ${message.guild.name}#${message.channel.name}`,
+          iconURL: message.guild.iconURL({ dynamic: true, size: 16 })
+        });
+        return newEmbed;
+      });
+
+      messageOptions.embeds = [embed, ...forwardedEmbeds];
+    }
+
+    // Send the message to target channel
+    await targetChannel.send(messageOptions);
+
+    console.log(`[LIVE] Forwarded ${config.type} message from ${message.author.tag} in ${message.guild.name}#${message.channel.name} to #${targetChannel.name}`);
 
   } catch (error) {
     console.error('[LIVE] Error forwarding message:', error);

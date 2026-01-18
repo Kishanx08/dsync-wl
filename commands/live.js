@@ -8,8 +8,8 @@ const CONFIG_PATH = path.join(__dirname, '..', 'data', 'liveConfig.json');
 module.exports = {
   name: 'live',
   description: 'Set up live message forwarding from another server/channel',
-  usage: '$live <server_name> <channel_name> or $live stop',
-  example: '$live "My Server" general or $live stop',
+  usage: '$live <server_name> [channel_name] or $live stop',
+  example: '$live "My Server" general or $live "My Server" (for all channels) or $live stop',
   async execute(message, args) {
     console.log(`[LIVE] Command received from ${message.author.tag} (${message.author.id})`);
 
@@ -39,12 +39,12 @@ module.exports = {
     }
 
     // Start forwarding
-    if (args.length < 2) {
-      return message.reply('Usage: `$live <server_name> <channel_name>` or `$live stop`');
+    if (args.length < 1) {
+      return message.reply('Usage: `$live <server_name> [channel_name]` or `$live stop`\nIf no channel specified, forwards from all text channels in the server.');
     }
 
     const serverName = args[0];
-    const channelName = args[1];
+    const channelName = args[1]; // Optional - if not provided, forward from all channels
     const targetChannelId = message.channel.id; // Where to forward messages
 
     try {
@@ -57,44 +57,77 @@ module.exports = {
         return message.reply(`❌ Could not find a server matching "${serverName}". Use \`$how list\` to see available servers.`);
       }
 
-      // Find the source channel
-      const sourceChannel = sourceGuild.channels.cache.find(ch =>
-        ch.type === 0 && ch.name.toLowerCase().includes(channelName.toLowerCase())
-      );
-
-      if (!sourceChannel) {
-        return message.reply(`❌ Could not find a text channel matching "${channelName}" in ${sourceGuild.name}.`);
-      }
-
-      // Check if bot can read messages in source channel
-      if (!sourceChannel.permissionsFor(message.client.user).has('ReadMessageHistory')) {
-        return message.reply('❌ I do not have permission to read messages in that channel.');
-      }
-
       // Check if bot can send messages in target channel
       if (!message.channel.permissionsFor(message.client.user).has('SendMessages')) {
         return message.reply('❌ I do not have permission to send messages in this channel.');
       }
 
-      // Store configuration
       const config = readLiveConfig();
-      const configKey = `${sourceGuild.id}_${sourceChannel.id}`;
+      let configKey, configData, responseMessage;
 
-      config[configKey] = {
-        sourceGuildId: sourceGuild.id,
-        sourceGuildName: sourceGuild.name,
-        sourceChannelId: sourceChannel.id,
-        sourceChannelName: sourceChannel.name,
-        targetChannelId: targetChannelId,
-        targetChannelName: message.channel.name,
-        startedBy: message.author.id,
-        startedAt: new Date().toISOString()
-      };
+      if (channelName) {
+        // Channel-specific forwarding
+        const sourceChannel = sourceGuild.channels.cache.find(ch =>
+          ch.type === 0 && ch.name.toLowerCase().includes(channelName.toLowerCase())
+        );
 
+        if (!sourceChannel) {
+          return message.reply(`❌ Could not find a text channel matching "${channelName}" in ${sourceGuild.name}.`);
+        }
+
+        // Check if bot can read messages in source channel
+        if (!sourceChannel.permissionsFor(message.client.user).has('ReadMessageHistory')) {
+          return message.reply('❌ I do not have permission to read messages in that channel.');
+        }
+
+        configKey = `${sourceGuild.id}_${sourceChannel.id}`;
+        configData = {
+          sourceGuildId: sourceGuild.id,
+          sourceGuildName: sourceGuild.name,
+          sourceChannelId: sourceChannel.id,
+          sourceChannelName: sourceChannel.name,
+          targetChannelId: targetChannelId,
+          targetChannelName: message.channel.name,
+          type: 'channel', // Specify this is channel-specific
+          startedBy: message.author.id,
+          startedAt: new Date().toISOString()
+        };
+        responseMessage = `✅ Live message forwarding configured!\n**From:** ${sourceGuild.name} #${sourceChannel.name}\n**To:** #${message.channel.name}\n\nAll new messages will be forwarded here. Use \`$live stop\` to stop.`;
+
+      } else {
+        // Server-wide forwarding
+        // Check permissions for all text channels
+        const textChannels = sourceGuild.channels.cache.filter(ch => ch.type === 0);
+        let hasPermission = false;
+        for (const [_, channel] of textChannels) {
+          if (channel.permissionsFor(message.client.user).has('ReadMessageHistory')) {
+            hasPermission = true;
+            break;
+          }
+        }
+
+        if (!hasPermission) {
+          return message.reply('❌ I do not have permission to read messages in any text channels of that server.');
+        }
+
+        configKey = `${sourceGuild.id}_server`;
+        configData = {
+          sourceGuildId: sourceGuild.id,
+          sourceGuildName: sourceGuild.name,
+          targetChannelId: targetChannelId,
+          targetChannelName: message.channel.name,
+          type: 'server', // Specify this is server-wide
+          startedBy: message.author.id,
+          startedAt: new Date().toISOString()
+        };
+        responseMessage = `✅ Live message forwarding configured!\n**From:** ${sourceGuild.name} (all channels)\n**To:** #${message.channel.name}\n\nAll new messages from all text channels will be forwarded here. Use \`$live stop\` to stop.`;
+      }
+
+      config[configKey] = configData;
       writeLiveConfig(config);
 
-      console.log(`[LIVE] Started forwarding from ${sourceGuild.name}#${sourceChannel.name} to ${message.channel.name}`);
-      await message.reply(`✅ Live message forwarding configured!\n**From:** ${sourceGuild.name} #${sourceChannel.name}\n**To:** #${message.channel.name}\n\nAll new messages will be forwarded here. Use \`$live stop\` to stop.`);
+      console.log(`[LIVE] Started ${configData.type} forwarding from ${sourceGuild.name} to ${message.channel.name}`);
+      await message.reply(responseMessage);
 
     } catch (error) {
       console.error('[LIVE] Error setting up forwarding:', error);
