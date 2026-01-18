@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder } = require('discord.js');
 const { getMonitor } = require('./utils/statusMonitor');
 const fs = require('fs');
 const path = require('path');
@@ -97,6 +97,18 @@ client.once('ready', async () => {
   } catch (err) {
     console.error('[PLAYERS] Failed to resume monitors:', err?.message || err);
   }
+
+  // Load live forwarding configurations
+  try {
+    const { readLiveConfig } = require('./commands/live');
+    const liveConfig = readLiveConfig();
+    const activeForwarding = Object.keys(liveConfig).length;
+    if (activeForwarding > 0) {
+      console.log(`[LIVE] Loaded ${activeForwarding} live forwarding configuration(s)`);
+    }
+  } catch (err) {
+    console.error('[LIVE] Failed to load forwarding config:', err?.message || err);
+  }
 });
 
 // Handle slash command interactions
@@ -172,6 +184,61 @@ client.on('messageCreate', async message => {
   } catch (error) {
     console.error(error);
     await message.reply('There was an error executing that command!');
+  }
+});
+
+// Handle live message forwarding
+client.on('messageCreate', async message => {
+  // Ignore messages from bots and DMs
+  if (message.author.bot || !message.guild) return;
+
+  try {
+    const { readLiveConfig } = require('./commands/live');
+    const liveConfig = readLiveConfig();
+    const configKey = `${message.guild.id}_${message.channel.id}`;
+
+    const config = liveConfig[configKey];
+    if (!config) return; // No forwarding configured for this channel
+
+    // Don't forward messages from the target channel to avoid loops
+    if (message.channel.id === config.targetChannelId) return;
+
+    // Get target channel
+    const targetChannel = await client.channels.fetch(config.targetChannelId).catch(() => null);
+    if (!targetChannel || targetChannel.type !== 0) return;
+
+    // Check if bot can send messages in target channel
+    if (!targetChannel.permissionsFor(client.user).has('SendMessages')) return;
+
+    // Create embed for the forwarded message
+    const embed = new EmbedBuilder()
+      .setColor(0x5865F2) // Discord blurple
+      .setAuthor({
+        name: `${message.author.username}#${message.author.discriminator}`,
+        iconURL: message.author.displayAvatarURL({ dynamic: true, size: 256 })
+      })
+      .setDescription(message.content || '*No text content*')
+      .addFields(
+        { name: 'User ID', value: message.author.id, inline: true },
+        { name: 'Server', value: message.guild.name, inline: true },
+        { name: 'Channel', value: `#${message.channel.name}`, inline: true }
+      )
+      .setTimestamp(message.createdTimestamp)
+      .setFooter({ text: 'Live Forward' });
+
+    // Add attachments if any
+    if (message.attachments.size > 0) {
+      const attachment = message.attachments.first();
+      embed.setImage(attachment.url);
+    }
+
+    // Send the embed to target channel
+    await targetChannel.send({ embeds: [embed] });
+
+    console.log(`[LIVE] Forwarded message from ${message.author.tag} in ${message.guild.name}#${message.channel.name} to #${targetChannel.name}`);
+
+  } catch (error) {
+    console.error('[LIVE] Error forwarding message:', error);
   }
 });
 
