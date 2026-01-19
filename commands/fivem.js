@@ -5,10 +5,9 @@ module.exports = {
   name: 'fivem',
   description: 'Monitor FiveM server players in a specified channel',
   async execute(message, args) {
-    // Check permissions (assuming same as status command)
-    const { isGiveAdmin } = require('../utils/permissions');
-    if (!isGiveAdmin(message.author.id)) {
-      return message.reply('❌ You are not authorized to use this command.');
+    // Check if user has administrator permissions in the server
+    if (!message.member.permissions.has('Administrator')) {
+      return message.reply('❌ You need administrator permissions to use this command.');
     }
 
     const subcommand = args[0]?.toLowerCase();

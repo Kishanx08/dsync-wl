@@ -11,12 +11,6 @@ module.exports = {
   async execute(message, args) {
     console.log(`[SEARCH] Command received from ${message.author.tag} (${message.author.id})`);
 
-    // Check permission
-    if (!canUsePrefixCommand(message.author.id, 'search')) {
-      console.log(`[SEARCH] Permission denied for user ${message.author.tag}`);
-      return message.reply('You do not have permission to use this command.');
-    }
-
     // Get search term
     const searchTerm = args.join(' ').trim();
     if (!searchTerm) {
