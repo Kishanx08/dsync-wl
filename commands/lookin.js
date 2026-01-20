@@ -53,33 +53,51 @@ module.exports = {
 
 async function listChannels(message, guild) {
   try {
-    // Get all text channels the bot can access
-    const channels = guild.channels.cache
+    // Get all text and voice channels the bot can access
+    const textChannels = guild.channels.cache
       .filter(channel => channel.type === 0) // TEXT CHANNEL
       .sort((a, b) => a.position - b.position);
 
-    if (channels.size === 0) {
-      return message.reply(`No text channels found in ${guild.name}.`);
+    const voiceChannels = guild.channels.cache
+      .filter(channel => channel.type === 2) // VOICE CHANNEL
+      .sort((a, b) => a.position - b.position);
+
+    if (textChannels.size === 0 && voiceChannels.size === 0) {
+      return message.reply(`No channels found in ${guild.name}.`);
     }
 
     const embed = new EmbedBuilder()
       .setColor(0x57F287)
       .setTitle(`Channels in ${guild.name}`)
-      .setDescription(`Found ${channels.size} text channel(s):`)
+      .setDescription(`Found ${textChannels.size} text and ${voiceChannels.size} voice channel(s):`)
       .setTimestamp(new Date());
 
-    let channelList = '';
-    for (const [channelId, channel] of channels) {
-      channelList += `#${channel.name}\n`;
+    if (textChannels.size > 0) {
+      let textList = '';
+      for (const [channelId, channel] of textChannels) {
+        textList += `#${channel.name}\n`;
+      }
+      embed.addFields({
+        name: 'Text Channels',
+        value: `\`\`\`${textList}\`\`\``,
+        inline: false
+      });
     }
 
-    embed.addFields({
-      name: 'Text Channels',
-      value: `\`\`\`${channelList}\`\`\``,
-      inline: false
-    });
+    if (voiceChannels.size > 0) {
+      let voiceList = '';
+      for (const [channelId, channel] of voiceChannels) {
+        const memberCount = channel.members.size;
+        voiceList += `${channel.name} (${memberCount} member${memberCount !== 1 ? 's' : ''})\n`;
+      }
+      embed.addFields({
+        name: 'Voice Channels',
+        value: `\`\`\`${voiceList}\`\`\``,
+        inline: false
+      });
+    }
 
-    console.log(`[LOOKIN] Sending channel list with ${channels.size} channels`);
+    console.log(`[LOOKIN] Sending channel list with ${textChannels.size} text and ${voiceChannels.size} voice channels`);
     await message.reply({ embeds: [embed] });
 
   } catch (error) {

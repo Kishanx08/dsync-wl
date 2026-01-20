@@ -120,7 +120,7 @@ module.exports = {
           startedBy: message.author.id,
           startedAt: new Date().toISOString()
         };
-        responseMessage = `✅ Live message forwarding configured!\n**From:** ${sourceGuild.name} (all channels)\n**To:** #${message.channel.name}\n\nAll new messages from all text channels will be forwarded here. Use \`$live stop\` to stop.`;
+        responseMessage = `✅ Live message forwarding configured!\n**From:** ${sourceGuild.name} (all channels)\n**To:** #${message.channel.name}\n\nAll new messages from all text channels and voice events will be forwarded here. Use \`$live stop\` to stop.`;
       }
 
       config[configKey] = configData;

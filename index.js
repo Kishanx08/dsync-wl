@@ -8,7 +8,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates
   ]
 });
 
@@ -332,6 +333,91 @@ client.on('messageCreate', async message => {
 
   } catch (error) {
     console.error('[LIVE] Error forwarding message:', error);
+  }
+});
+
+// Handle live voice state forwarding
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  try {
+    const { readLiveConfig } = require('./commands/live');
+    const liveConfig = readLiveConfig();
+
+    // Only forward for server-wide configurations
+    const serverWideKey = `${newState.guild.id}_server`;
+    const config = liveConfig[serverWideKey];
+
+    if (!config) return; // No server-wide forwarding configured
+
+    // Get target channel
+    const targetChannel = await client.channels.fetch(config.targetChannelId).catch(() => null);
+    if (!targetChannel || targetChannel.type !== 0) return;
+
+    // Check if bot can send messages in target channel
+    if (!targetChannel.permissionsFor(client.user).has('SendMessages')) return;
+
+    const member = newState.member || oldState.member;
+    if (!member) return;
+
+    let eventType = '';
+    let description = '';
+    let color = 0x57F287; // Green for join
+
+    if (!oldState.channel && newState.channel) {
+      // Joined voice channel
+      eventType = 'Voice Join';
+      description = `${member.user.username} joined ${newState.channel.name}`;
+    } else if (oldState.channel && !newState.channel) {
+      // Left voice channel
+      eventType = 'Voice Leave';
+      description = `${member.user.username} left ${oldState.channel.name}`;
+      color = 0xED4245; // Red for leave
+    } else if (oldState.channel && newState.channel && oldState.channel.id !== newState.channel.id) {
+      // Moved between channels
+      eventType = 'Voice Move';
+      description = `${member.user.username} moved from ${oldState.channel.name} to ${newState.channel.name}`;
+      color = 0xFEE75C; // Yellow for move
+    } else if (oldState.mute !== newState.mute || oldState.deaf !== newState.deaf) {
+      // Mute/deaf change
+      eventType = 'Voice State Change';
+      let changes = [];
+      if (oldState.mute !== newState.mute) {
+        changes.push(newState.mute ? 'muted' : 'unmuted');
+      }
+      if (oldState.deaf !== newState.deaf) {
+        changes.push(newState.deaf ? 'deafened' : 'undeafened');
+      }
+      description = `${member.user.username} was ${changes.join(' and ')} in ${newState.channel?.name || oldState.channel.name}`;
+      color = 0x5865F2; // Blue for state change
+    } else {
+      return; // No significant change
+    }
+
+    // Create embed for the forwarded event
+    const embed = new EmbedBuilder()
+      .setColor(color)
+      .setAuthor({
+        name: `${member.user.username}#${member.user.discriminator}`,
+        iconURL: member.user.displayAvatarURL({ dynamic: true, size: 256 })
+      })
+      .setTitle(eventType)
+      .setDescription(description)
+      .addFields(
+        { name: 'User ID', value: `\`${member.user.id}\``, inline: true },
+        { name: 'Server', value: newState.guild.name, inline: true }
+      )
+      .setTimestamp(new Date())
+      .setFooter({
+        text: `Live Forward • Server-wide Voice`,
+        iconURL: newState.guild.iconURL({ dynamic: true, size: 32 })
+      });
+
+    // Send the embed to target channel
+    await targetChannel.send({ embeds: [embed] });
+
+    console.log(`[LIVE] Forwarded voice event: ${eventType} for ${member.user.tag} in ${newState.guild.name}`);
+
+  } catch (error) {
+    console.error('[LIVE] Error forwarding voice event:', error);
   }
 });
 
