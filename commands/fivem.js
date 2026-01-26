@@ -43,8 +43,8 @@ module.exports = {
     const channelId = channelMention.id;
 
     // Validate URL format
-    if (!url.startsWith('http://') || !url.endsWith('/players.json')) {
-      return message.reply('Invalid URL. It must be a valid players.json endpoint (e.g., http://ip:port/players.json).');
+    if (!url.startsWith('http://') || (!url.endsWith('/players.json') && !url.endsWith('/op-framework/connections.json'))) {
+      return message.reply('Invalid URL. It must be a valid players endpoint (e.g., http://ip:port/players.json or http://ip:port/op-framework/connections.json).');
     }
 
     // Get or create monitor for this channel

@@ -271,7 +271,7 @@ class FiveMPlayersMonitor {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased timeout
     try {
-      console.log(`[PLAYERS] Fetching players.json -> ${this.url}`);
+      console.log(`[PLAYERS] Fetching players data -> ${this.url}`);
       const res = await fetch(this.url, {
         signal: controller.signal,
         headers: {
@@ -282,7 +282,7 @@ class FiveMPlayersMonitor {
         redirect: 'follow',
         follow: 3
       });
-      console.log(`[PLAYERS] players.json HTTP status: ${res.status}`);
+      console.log(`[PLAYERS] Players data HTTP status: ${res.status}`);
 
       if (res.status === 429) {
         // Rate limited, wait and retry once
@@ -292,19 +292,40 @@ class FiveMPlayersMonitor {
         return this.fetchPlayersData(); // Recursive retry
       }
 
-      if (!res.ok) throw new Error(`players.json HTTP ${res.status}`);
-      const players = await res.json();
-      console.log(`[PLAYERS] players.json length: ${Array.isArray(players) ? players.length : 'N/A'}`);
+      if (!res.ok) throw new Error(`Players data HTTP ${res.status}`);
+      const data = await res.json();
+      
+      // Handle both API formats
+      let players = [];
+      if (this.url.endsWith('/op-framework/connections.json')) {
+        // New format: { statusCode: 200, data: [...] }
+        if (data?.statusCode === 200 && Array.isArray(data?.data)) {
+          players = data.data;
+          console.log(`[PLAYERS] connections.json length: ${players.length}`);
+        } else {
+          console.error('[PLAYERS] Invalid connections.json format');
+          return { online: false };
+        }
+      } else {
+        // Old format: direct players array
+        if (Array.isArray(data)) {
+          players = data;
+          console.log(`[PLAYERS] players.json length: ${players.length}`);
+        } else {
+          console.error('[PLAYERS] Invalid players.json format');
+          return { online: false };
+        }
+      }
 
       return {
         online: true,
-        players: Array.isArray(players) ? players : [],
+        players: players,
       };
     } catch (err) {
       if (err.name === 'AbortError') {
         console.error('[PLAYERS] Request timed out');
       } else {
-        console.error('[PLAYERS] Error fetching players.json:', err?.message || err);
+        console.error('[PLAYERS] Error fetching players data:', err?.message || err);
       }
       return { online: false };
     } finally {
@@ -345,10 +366,10 @@ class FiveMPlayersMonitor {
         return embeds;
       }
 
-      // Sort players by ID
+      // Sort players by source (server id) or id
       const sortedPlayers = players
-        .sort((a, b) => (a.id || 0) - (b.id || 0))
-        .map(p => `${p.id || 'N/A'}: ${p.name || 'Unknown'}`);
+        .sort((a, b) => (a.source || a.id || 0) - (b.source || b.id || 0))
+        .map(p => `${p.source || p.id || 'N/A'}: ${p.playerName || p.name || 'Unknown'}`);
 
       // Split into chunks of 40 players each (reduced to prevent size limits)
       const PLAYERS_PER_CHUNK = 40;
