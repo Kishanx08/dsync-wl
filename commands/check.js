@@ -1,192 +1,202 @@
-const { isUserBanned, getUserByDiscordId, pool } = require('../utils/mariadb');
-const { canUsePrefixCommand } = require('../utils/permissions');
+const fs = require('fs');
+const path = require('path');
 
-async function isUserWhitelisted(license_identifier) {
-  const sql = 'SELECT * FROM user_whitelist WHERE license_identifier = ? LIMIT 1';
+function loadCharacters() {
   try {
-    const [rows] = await pool.execute(sql, [license_identifier]);
-    return rows.length > 0;
-  } catch (err) {
-    console.error('Error checking whitelist status:', err);
-    return false;
+    const filePath = path.join(__dirname, '../data/characters.json');
+    const data = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error loading characters data:', error);
+    return [];
   }
 }
 
-async function getUserStaffInfo(license_identifier) {
-  const sql = 'SELECT * FROM users WHERE license_identifier = ? LIMIT 1';
-  try {
-    const [rows] = await pool.execute(sql, [license_identifier]);
-    if (rows.length === 0) return null;
-    
-    const user = rows[0];
-    
-    // Log raw user data for debugging
-    console.log(`[CHECK] Raw user data:`, JSON.stringify(user, null, 2));
-    
-    // Check which format we're using
-    const isNewFormat = 'is_staff' in user;
-    console.log(`[CHECK] Using ${isNewFormat ? 'new' : 'old'} format for permissions`);
-    
-    // Helper to normalize DB truthy values (1/0, '1'/'0', true/false)
-    const toBoolean = (value) => {
-      if (value === true || value === false) return value;
-      if (value === 1 || value === 0) return value === 1;
-      if (value === '1' || value === '0') return value === '1';
-      // Fallback: treat non-null/non-undefined non-zero numbers as true
-      if (typeof value === 'number') return value !== 0;
-      if (typeof value === 'string') return value.toLowerCase() === 'true';
-      return false;
-    };
+function searchByCharacterId(characters, id) {
+  return characters.find(char => char.character_id === parseInt(id));
+}
 
-    // Helpers to format unix timestamps provided in seconds or milliseconds
-    const toMsEpoch = (value) => {
-      if (value === null || value === undefined) return null;
-      const num = Number(value);
-      if (!Number.isFinite(num) || num <= 0) return null;
-      return num < 1e12 ? num * 1000 : num; // assume seconds if below ~Sat Sep 09 2001 in ms
-    };
-    const formatEpoch = (value) => {
-      const ms = toMsEpoch(value);
-      return ms ? new Date(ms).toLocaleString() : 'Unknown';
-    };
+function searchByLicense(characters, license) {
+  // Handle both formats: with and without 'license:' prefix
+  const cleanLicense = license.replace('license:', '');
+  return characters.filter(char => 
+    char.licence_identifier === license || 
+    char.licence_identifier === `license:${cleanLicense}` ||
+    char.licence_identifier === cleanLicense
+  );
+}
 
-    // Get staff status based on format
-    let isStaff, isSeniorStaff, isSuperAdmin;
+function searchByPhoneNumber(characters, phone) {
+  return characters.find(char => char.phone_number === phone);
+}
+
+function searchByName(characters, name) {
+  const searchTerms = name.toLowerCase().split(' ').filter(term => term.length > 0);
+  
+  return characters.filter(char => {
+    const firstName = char.first_name.toLowerCase();
+    const lastName = char.last_name.toLowerCase();
+    const fullName = `${firstName} ${lastName}`;
     
-    if (isNewFormat) {
-      isStaff = toBoolean(user.is_staff);
-      isSeniorStaff = toBoolean(user.is_senior_staff);
-      // Support both column names: is_super_admin (preferred) and is_superadmin (legacy)
-      const rawSuperAdminA = user.is_super_admin;
-      const rawSuperAdminB = user.is_superadmin;
-      isSuperAdmin = toBoolean(rawSuperAdminA) || toBoolean(rawSuperAdminB);
-      
-      // In case any of the fields are null/undefined, default to false
-      isStaff = isStaff || false;
-      isSeniorStaff = isSeniorStaff || false;
-      isSuperAdmin = isSuperAdmin || false;
-      
-      console.log(`[CHECK] New format permissions - Staff: ${isStaff}, Senior: ${isSeniorStaff}, SuperAdmin: ${isSuperAdmin}`);
-      console.log(`[CHECK] Raw superadmin fields - is_super_admin:`, rawSuperAdminA, `| is_superadmin:`, rawSuperAdminB);
-    } else {
-      isStaff = user.rank === 'staff';
-      isSeniorStaff = user.rank === 'seniorstaff';
-      isSuperAdmin = user.rank === 'superadmin';
-      console.log(`[CHECK] Old format permissions - Rank: ${user.rank}`);
+    // If multiple search terms, all must match somewhere in the name
+    if (searchTerms.length > 1) {
+      return searchTerms.every(term => 
+        firstName.includes(term) || 
+        lastName.includes(term) || 
+        fullName.includes(term)
+      );
     }
     
-    const staffInfo = {
-      isStaff,
-      isSeniorStaff,
-      isSuperAdmin,
-      lastSeen: formatEpoch(user.last_seen) || 'Never',
-      lastConnection: formatEpoch(user.last_connection) || 'Unknown',
-      playTime: user.playtime || '0 minutes',
-      joinDate: formatEpoch(user.join_date),
-      // Add raw data for debugging
-      _raw: user
-    };
-    
-    return staffInfo;
-  } catch (err) {
-    console.error('Error getting user staff info:', err);
-    return null;
-  }
+    // Single search term - match if it appears in first name, last name, or full name
+    const term = searchTerms[0];
+    return firstName.includes(term) || 
+           lastName.includes(term) || 
+           fullName.includes(term);
+  });
+}
+
+function formatCharacterProfile(character) {
+  return `**Character Profile**
+\`\`\`
+Character ID: ${character.character_id}
+Full Name: ${character.first_name} ${character.last_name}
+Phone Number: ${character.phone_number}
+Date of Birth: ${character.date_of_birth}
+License ID: ${character.licence_identifier}
+Job: ${character.job_name || 'N/A'}${character.department_name ? ` (${character.department_name})` : ''}${character.position_name ? ` - ${character.position_name}` : ''}
+\`\`\``;
 }
 
 module.exports = {
   name: 'check',
-  description: 'Check user status including ban, whitelist, and staff permissions',
-  usage: '$check <@user | user_id>',
-  example: '$check @Kishan or $check 1057573344855207966',
+  aliases: ['ck'],
+  description: 'Check character information from the database',
+  usage: '$check <cid | license | ld | num | number | name> <value>',
+  examples: [
+    '$check cid 5861',
+    '$check license license:371bb351c24c5477d42481ba601a4b81d3c03268',
+    '$check license 371bb351c24c5477d42481ba601a4b81d3c03268',
+    '$check ld license:371bb351c24c5477d42481ba601a4b81d3c03268',
+    '$check ld 371bb351c24c5477d42481ba601a4b81d3c03268',
+    '$check num 444-9818',
+    '$check number 444-9818',
+    '$check name "Krishna Soni"'
+  ],
   async execute(message, args) {
-    console.log(`[CHECK] Command received from ${message.author.tag} (${message.author.id})`);
-    
-    // Check permission via file-backed permissions
-    if (!canUsePrefixCommand(message.author.id, 'check')) {
-      console.log(`[CHECK] Permission denied for user ${message.author.tag}`);
-      return message.reply('You do not have permission to use this command.');
+    if (!args[0]) {
+      return message.reply('Please provide a search type. Usage: `$check <cid | license | ld | num | number | name> <value>`');
     }
 
-    // Accept mention or raw ID
-    const targetId = (message.mentions.users.first()?.id) || (args[0] ? String(args[0]).replace(/\D/g, '') : null);
-    if (!targetId) {
-      console.log(`[CHECK] No valid target provided`);
-      return message.reply('Please provide a user mention or ID. Example: `$check @username` or `$check <user_id>`');
+    const searchType = args[0].toLowerCase();
+
+    // Handle list command
+    if (searchType === 'list') {
+      const helpMessage = `**$check Command Usage Guide**
+
+\`\`\`
+$check cid {character_id}     - Search by Character ID
+  Example: $check cid 5861
+
+$check license {license}     - Search by License (full form)
+  Example: $check license license:371bb351c24c5477d42481ba601a4b81d3c03268
+  Example: $check license 371bb351c24c5477d42481ba601a4b81d3c03268
+
+$check ld {license}          - Search by License (short form)
+  Example: $check ld license:371bb351c24c5477d42481ba601a4b81d3c03268
+  Example: $check ld 371bb351c24c5477d42481ba601a4b81d3c03268
+
+$check num {phone_number}    - Search by Phone Number
+  Example: $check num 444-9818
+
+$check number {phone_number} - Search by Phone Number (full form)
+  Example: $check number 444-9818
+
+$check name {name}          - Search by Name (supports partial names)
+  Example: $check name "Krishna Soni"
+  Example: $check name Krishna
+  Example: $check name Soni
+  Example: $check name Ahuja
+
+Alias: $ck works the same as $check
+\`\`\`
+
+`;
+      
+      return message.reply(helpMessage);
+    }
+
+    const searchValue = args.slice(1).join(' ');
+
+    if (!searchValue) {
+      return message.reply('Please provide a search value. Usage: `$check <cid | license | ld | num | number | name> <value>`');
     }
 
     try {
-      console.log(`[CHECK] Checking status for user ${targetId})`);
+      const characters = loadCharacters();
       
-      // Get user from database
-      const userData = await getUserByDiscordId(targetId);
-      if (!userData || !userData.license_identifier) {
-        console.log(`[CHECK] No user data found for ${targetId}`);
-        return message.reply('This user is not registered in the database.');
+      if (characters.length === 0) {
+        return message.reply('Character data is not available at the moment. Please try again later.');
       }
 
-      // Check ban status with detailed logging
-      console.log(`[CHECK] Checking ban status for license: ${userData.license_identifier}`);
-      const banInfo = await isUserBanned(userData.license_identifier);
-      console.log(`[CHECK] Ban check result:`, JSON.stringify(banInfo, null, 2));
-      const isBanned = banInfo !== null;
-      
-      // Log detailed ban information if banned
-      if (isBanned) {
-        console.log(`[CHECK] User is banned. Details:`, {
-          reason: banInfo.reason,
-          expires: banInfo.expire,
-          expiresDate: banInfo.expire > 0 ? new Date(banInfo.expire * 1000).toISOString() : 'Never',
-          creator: banInfo.creator_identifier,
-          creationReason: banInfo.creation_reason,
-          banHash: banInfo.ban_hash
-        });
-      }
-      
-      // Check whitelist status
-      const isWhitelisted = await isUserWhitelisted(userData.license_identifier);
-      
-      // Get staff info
-      const staffInfo = await getUserStaffInfo(userData.license_identifier);
+      let results = [];
 
-      // Format the response
-      let response = `**User Check for <@${targetId}>**\n`;
-      response += `\`\`\`\n`;
-      response += `Discord ID: ${targetId}\n`;
-      response += `License ID: ${userData.license_identifier || 'N/A'}\n`;
-      response += `\n`;
-      response += `Ban Status: ${isBanned ? '❌ BANNED' : '✅ Not Banned'}\n`;
-      
-      if (isBanned) {
-        const expireDate = banInfo.expire > 0 ? new Date(banInfo.expire * 1000).toLocaleString() : 'Permanent';
-        response += `- Reason: ${banInfo.reason || 'No reason provided'}\n`;
-        response += `- Banned Until: ${expireDate}\n`;
-        response += `- Banned By: ${banInfo.creator_identifier || 'Unknown'}\n`;
+      switch (searchType) {
+        case 'cid':
+          results = searchByCharacterId(characters, searchValue);
+          if (results) {
+            results = [results];
+          }
+          break;
+          
+        case 'license':
+        case 'ld':
+          results = searchByLicense(characters, searchValue);
+          break;
+          
+        case 'num':
+        case 'number':
+          results = searchByPhoneNumber(characters, searchValue);
+          if (results) {
+            results = [results];
+          }
+          break;
+          
+        case 'name':
+          results = searchByName(characters, searchValue);
+          break;
+          
+        default:
+          return message.reply('Invalid search type. Use: `cid`, `license`, `ld`, `num`, `number`, or `name`');
       }
-      
-      response += `\n`;
-      response += `Whitelist Status: ${isWhitelisted ? '✅ Whitelisted' : '❌ Not Whitelisted'}\n`;
-      
-      if (staffInfo) {
-        response += `\n`;
-        response += `Staff Status:\n`;
-        response += `- Staff: ${staffInfo.isStaff ? '✅' : '❌'}\n`;
-        response += `- Senior Staff: ${staffInfo.isSeniorStaff ? '✅' : '❌'}\n`;
-        response += `- Super Admin: ${staffInfo.isSuperAdmin ? '✅' : '❌'}\n`;
-        response += `- Join Date: ${staffInfo.joinDate}\n`;
-        response += `- Last Seen: ${staffInfo.lastSeen}\n`;
-        response += `- Last Connection: ${staffInfo.lastConnection}\n`;
-        response += `- Play Time: ${staffInfo.playTime}\n`;
+
+      if (!results || results.length === 0) {
+        return message.reply(`No characters found for ${searchType}: ${searchValue}`);
       }
+
+      if (results.length === 1) {
+        return message.reply(formatCharacterProfile(results[0]));
+      }
+
+      // Multiple results
+      let response = `**Found ${results.length} characters matching "${searchValue}"**\n\n`;
       
-      response += `\`\`\``;
+      // Limit to first 10 results to avoid message length issues
+      const limitedResults = results.slice(0, 10);
       
-      console.log(`[CHECK] Sending user check results for ${targetId}`);
-      await message.reply(response);
-      
+      limitedResults.forEach((char, index) => {
+        response += `${index + 1}. **${char.first_name} ${char.last_name}** (ID: ${char.character_id})\n`;
+        response += `   Phone: ${char.phone_number} | Job: ${char.job_name || 'N/A'}\n\n`;
+      });
+
+      if (results.length > 10) {
+        response += `... and ${results.length - 10} more results. Please be more specific.`;
+      }
+
+      return message.reply(response);
+
     } catch (error) {
-      console.error('[CHECK] Error executing check command:', error);
-      await message.reply('An error occurred while checking user information.');
+      console.error('Error executing check command:', error);
+      return message.reply('An error occurred while searching for character information.');
     }
-  },
+  }
 };

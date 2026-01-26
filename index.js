@@ -4,6 +4,9 @@ const { getMonitor } = require('./utils/statusMonitor');
 const fs = require('fs');
 const path = require('path');
 
+// Import character updater to run on startup
+require('./update-characters');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
