@@ -52,15 +52,15 @@ module.exports = {
 };
 
 async function fetchPlayersData() {
-  // Use the same server URL as the status monitor
-  const baseUrl = 'http://45.79.124.203:30120'; // Same as in statusMonitor.js getMonitor
+  // Use the new connections.json endpoint
+  const url = 'http://45.79.124.203:30120/op-framework/connections.json';
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
   try {
-    console.log(`[SEARCH] Fetching players.json from ${baseUrl}/players.json`);
-    const res = await fetch(`${baseUrl}/players.json`, {
+    console.log(`[SEARCH] Fetching connections.json from ${url}`);
+    const res = await fetch(url, {
       signal: controller.signal,
       headers: {
         'User-Agent': 'Discord-Bot/1.0',
@@ -73,10 +73,19 @@ async function fetchPlayersData() {
       return null;
     }
 
-    const players = await res.json();
-    console.log(`[SEARCH] Successfully fetched ${Array.isArray(players) ? players.length : 'invalid'} players`);
+    const data = await res.json();
+    
+    // Handle the new API format
+    let players = [];
+    if (data?.statusCode === 200 && Array.isArray(data?.data)) {
+      players = data.data;
+      console.log(`[SEARCH] Successfully fetched ${players.length} players`);
+    } else {
+      console.error('[SEARCH] Invalid connections.json format');
+      return [];
+    }
 
-    return Array.isArray(players) ? players : [];
+    return players;
 
   } catch (err) {
     console.error('[SEARCH] Error fetching players data:', err?.message || err);
@@ -90,8 +99,8 @@ function findPlayerMatches(players, searchTerm) {
   const matches = [];
   const searchLower = searchTerm.toLowerCase();
 
-  // First try exact ID match
-  const exactIdMatch = players.find(p => p.id && p.id.toString() === searchTerm);
+  // First try exact ID match (source instead of id)
+  const exactIdMatch = players.find(p => p.source && p.source.toString() === searchTerm);
   if (exactIdMatch) {
     matches.push(exactIdMatch);
   }
@@ -99,7 +108,7 @@ function findPlayerMatches(players, searchTerm) {
   // Then try partial name matches (if not already found by ID)
   if (matches.length === 0) {
     const nameMatches = players.filter(p =>
-      p.name && p.name.toLowerCase().includes(searchLower)
+      (p.playerName || p.name) && (p.playerName || p.name).toLowerCase().includes(searchLower)
     );
     matches.push(...nameMatches);
   }
@@ -118,27 +127,30 @@ function buildSearchEmbed(matches, searchTerm) {
     // Single result - show detailed info
     const player = matches[0];
     embed.addFields(
-      { name: 'Player ID', value: `${player.id || 'N/A'}`, inline: true },
-      { name: 'Player Name', value: `${player.name || 'Unknown'}`, inline: true },
-      { name: 'Ping', value: `${player.ping || 'N/A'}`, inline: true }
+      { name: 'Player ID', value: `${player.source || player.id || 'N/A'}`, inline: true },
+      { name: 'Player Name', value: `${player.playerName || player.name || 'Unknown'}`, inline: true },
+      { name: 'Joined', value: `${player.joined ? '✅' : '❌'}`, inline: true }
     );
 
-    // Add identifiers if available
-    if (player.identifiers && Array.isArray(player.identifiers)) {
-      const identifiers = player.identifiers
-        .filter(id => id && typeof id === 'string')
-        .slice(0, 5) // Limit to 5 identifiers
-        .join('\n');
-      if (identifiers) {
-        embed.addFields({ name: 'Identifiers', value: `\`\`\`${identifiers}\`\`\``, inline: false });
-      }
+    // Add license identifier if available
+    if (player.licenseIdentifier || player.license) {
+      embed.addFields({ 
+        name: 'License Identifier', 
+        value: `\`\`\`${player.licenseIdentifier || player.license}\`\`\``, 
+        inline: false 
+      });
     }
 
     embed.setDescription(`Found 1 player matching "${searchTerm}"`);
   } else {
     // Multiple results - show list
     const playerList = matches
-      .map(p => `${p.id || 'N/A'}: ${p.name || 'Unknown'}`)
+      .map(p => {
+        const name = p.playerName || p.name || 'Unknown';
+        const id = p.source || p.id || 'N/A';
+        const license = p.licenseIdentifier || p.license || null;
+        return license ? `${id}: ${name} (${license})` : `${id}: ${name}`;
+      })
       .join('\n');
 
     embed.addFields(

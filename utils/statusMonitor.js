@@ -369,7 +369,12 @@ class FiveMPlayersMonitor {
       // Sort players by source (server id) or id
       const sortedPlayers = players
         .sort((a, b) => (a.source || a.id || 0) - (b.source || b.id || 0))
-        .map(p => `${p.source || p.id || 'N/A'}: ${p.playerName || p.name || 'Unknown'}`);
+        .map(p => {
+          const name = p.playerName || p.name || 'Unknown';
+          const id = p.source || p.id || 'N/A';
+          const license = p.licenseIdentifier || p.license || null;
+          return license ? `${id}: ${name} (${license})` : `${id}: ${name}`;
+        });
 
       // Split into chunks of 40 players each (reduced to prevent size limits)
       const PLAYERS_PER_CHUNK = 40;
