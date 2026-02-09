@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder } = require('discord.js');
 const { getMonitor } = require('./utils/statusMonitor');
 const fs = require('fs');
+
 const path = require('path');
 
 // Import character updater to run on startup
@@ -246,6 +247,34 @@ client.on('messageCreate', async message => {
     const attachments = message.attachments;
     const embeds = message.embeds;
 
+    // Handle message replies
+    if (message.reference) {
+      try {
+        const referencedMessage = await message.fetchReference();
+        embed.addFields({
+          name: '🔁 Replying to',
+          value: `${referencedMessage.author.username}: ${referencedMessage.content?.substring(0, 100) || '*No content*'}${referencedMessage.content?.length > 100 ? '...' : ''}`,
+          inline: false
+        });
+      } catch (err) {
+        embed.addFields({
+          name: '🔁 Replying to',
+          value: '*Could not fetch referenced message*',
+          inline: false
+        });
+      }
+    }
+
+    // Handle forwarded messages
+    if (message.messageSnapshots && message.messageSnapshots.length > 0) {
+      const snapshot = message.messageSnapshots[0];
+      embed.addFields({
+        name: '📤 Forwarded Message',
+        value: `From: ${snapshot.author?.username || 'Unknown'}\nContent: ${snapshot.content?.substring(0, 200) || '*No content*'}${snapshot.content?.length > 200 ? '...' : ''}`,
+        inline: false
+      });
+    }
+
     // Add text content if present
     if (content) {
       // Truncate if too long for embed description
@@ -253,7 +282,7 @@ client.on('messageCreate', async message => {
         content = content.substring(0, 4093) + '...';
       }
       embed.setDescription(content);
-    } else if (attachments.size === 0 && embeds.length === 0) {
+    } else if (attachments.size === 0 && embeds.length === 0 && !message.reference && !message.messageSnapshots) {
       embed.setDescription('*No text content*');
     }
 
@@ -336,6 +365,302 @@ client.on('messageCreate', async message => {
 
   } catch (error) {
     console.error('[LIVE] Error forwarding message:', error);
+  }
+});
+
+// Handle message edits
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+  // Ignore messages from bots and DMs
+  if (newMessage.author.bot || !newMessage.guild) return;
+
+  try {
+    const { readLiveConfig } = require('./commands/live');
+    const liveConfig = readLiveConfig();
+
+    // Check for both channel-specific and server-wide forwarding
+    let config = null;
+    const channelSpecificKey = `${newMessage.guild.id}_${newMessage.channel.id}`;
+    const serverWideKey = `${newMessage.guild.id}_server`;
+
+    if (liveConfig[channelSpecificKey]) {
+      config = liveConfig[channelSpecificKey];
+    } else if (liveConfig[serverWideKey]) {
+      config = liveConfig[serverWideKey];
+    }
+
+    if (!config) return; // No forwarding configured
+
+    // Don't forward messages from the target channel to avoid loops
+    if (newMessage.channel.id === config.targetChannelId) return;
+
+    // Get target channel
+    const targetChannel = await client.channels.fetch(config.targetChannelId).catch(() => null);
+    if (!targetChannel || targetChannel.type !== 0) return;
+
+    // Check if bot can send messages in target channel
+    if (!targetChannel.permissionsFor(client.user).has('SendMessages')) return;
+
+    // Create embed for the edited message
+    const embed = new EmbedBuilder()
+      .setColor(0xFEE75C) // Yellow for edits
+      .setAuthor({
+        name: `${newMessage.author.username}#${newMessage.author.discriminator}`,
+        iconURL: newMessage.author.displayAvatarURL({ dynamic: true, size: 256 })
+      })
+      .setTitle('📝 Message Edited')
+      .addFields(
+        { name: 'User ID', value: `\`${newMessage.author.id}\``, inline: true },
+        { name: 'Server', value: newMessage.guild.name, inline: true },
+        { name: 'Channel', value: `#${newMessage.channel.name}`, inline: true }
+      )
+      .setTimestamp(new Date())
+      .setFooter({
+        text: `Live Forward • ${config.type === 'server' ? 'Server-wide' : 'Channel-specific'}`,
+        iconURL: newMessage.guild.iconURL({ dynamic: true, size: 32 })
+      });
+
+    // Add old content
+    if (oldMessage.content) {
+      const oldContent = oldMessage.content.length > 1024 ? 
+        oldMessage.content.substring(0, 1021) + '...' : oldMessage.content;
+      embed.addFields({
+        name: '🔴 Old Content',
+        value: oldContent || '*No content*',
+        inline: false
+      });
+    }
+
+    // Add new content
+    if (newMessage.content) {
+      const newContent = newMessage.content.length > 1024 ? 
+        newMessage.content.substring(0, 1021) + '...' : newMessage.content;
+      embed.addFields({
+        name: '🟢 New Content',
+        value: newContent || '*No content*',
+        inline: false
+      });
+    }
+
+    // Send the embed to target channel
+    await targetChannel.send({ embeds: [embed] });
+
+    console.log(`[LIVE] Forwarded message edit from ${newMessage.author.tag} in ${newMessage.guild.name}#${newMessage.channel.name}`);
+
+  } catch (error) {
+    console.error('[LIVE] Error forwarding message edit:', error);
+  }
+});
+
+// Handle message deletions
+client.on('messageDelete', async message => {
+  // Ignore messages from bots and DMs
+  if (message.author.bot || !message.guild) return;
+
+  try {
+    const { readLiveConfig } = require('./commands/live');
+    const liveConfig = readLiveConfig();
+
+    // Check for both channel-specific and server-wide forwarding
+    let config = null;
+    const channelSpecificKey = `${message.guild.id}_${message.channel.id}`;
+    const serverWideKey = `${message.guild.id}_server`;
+
+    if (liveConfig[channelSpecificKey]) {
+      config = liveConfig[channelSpecificKey];
+    } else if (liveConfig[serverWideKey]) {
+      config = liveConfig[serverWideKey];
+    }
+
+    if (!config) return; // No forwarding configured
+
+    // Don't forward messages from the target channel to avoid loops
+    if (message.channel.id === config.targetChannelId) return;
+
+    // Get target channel
+    const targetChannel = await client.channels.fetch(config.targetChannelId).catch(() => null);
+    if (!targetChannel || targetChannel.type !== 0) return;
+
+    // Check if bot can send messages in target channel
+    if (!targetChannel.permissionsFor(client.user).has('SendMessages')) return;
+
+    // Create embed for the deleted message
+    const embed = new EmbedBuilder()
+      .setColor(0xED4245) // Red for deletions
+      .setAuthor({
+        name: `${message.author.username}#${message.author.discriminator}`,
+        iconURL: message.author.displayAvatarURL({ dynamic: true, size: 256 })
+      })
+      .setTitle('🗑️ Message Deleted')
+      .addFields(
+        { name: 'User ID', value: `\`${message.author.id}\``, inline: true },
+        { name: 'Server', value: message.guild.name, inline: true },
+        { name: 'Channel', value: `#${message.channel.name}`, inline: true }
+      )
+      .setTimestamp(new Date())
+      .setFooter({
+        text: `Live Forward • ${config.type === 'server' ? 'Server-wide' : 'Channel-specific'}`,
+        iconURL: message.guild.iconURL({ dynamic: true, size: 32 })
+      });
+
+    // Add deleted content if available
+    if (message.content) {
+      const content = message.content.length > 1024 ? 
+        message.content.substring(0, 1021) + '...' : message.content;
+      embed.addFields({
+        name: '📄 Deleted Content',
+        value: content,
+        inline: false
+      });
+    }
+
+    // Add attachment info if any
+    if (message.attachments.size > 0) {
+      const attachmentNames = message.attachments.map(att => att.name).join(', ');
+      embed.addFields({
+        name: '📎 Deleted Attachments',
+        value: attachmentNames,
+        inline: false
+      });
+    }
+
+    // Send the embed to target channel
+    await targetChannel.send({ embeds: [embed] });
+
+    console.log(`[LIVE] Forwarded message deletion from ${message.author.tag} in ${message.guild.name}#${message.channel.name}`);
+
+  } catch (error) {
+    console.error('[LIVE] Error forwarding message deletion:', error);
+  }
+});
+
+// Handle poll answers
+client.on('pollVoteAdd', async (poll, user, answerId) => {
+  // Ignore polls from DMs and bots
+  if (!poll.message.guild || user.bot) return;
+
+  try {
+    const { readLiveConfig } = require('./commands/live');
+    const liveConfig = readLiveConfig();
+
+    // Check for both channel-specific and server-wide forwarding
+    let config = null;
+    const channelSpecificKey = `${poll.message.guild.id}_${poll.message.channel.id}`;
+    const serverWideKey = `${poll.message.guild.id}_server`;
+
+    if (liveConfig[channelSpecificKey]) {
+      config = liveConfig[channelSpecificKey];
+    } else if (liveConfig[serverWideKey]) {
+      config = liveConfig[serverWideKey];
+    }
+
+    if (!config) return; // No forwarding configured
+
+    // Don't forward polls from the target channel to avoid loops
+    if (poll.message.channel.id === config.targetChannelId) return;
+
+    // Get target channel
+    const targetChannel = await client.channels.fetch(config.targetChannelId).catch(() => null);
+    if (!targetChannel || targetChannel.type !== 0) return;
+
+    // Check if bot can send messages in target channel
+    if (!targetChannel.permissionsFor(client.user).has('SendMessages')) return;
+
+    // Find the answer text
+    const answer = poll.answers.find(a => a.answerId === answerId);
+    const answerText = answer ? answer.text : 'Unknown option';
+
+    // Create embed for the poll vote
+    const embed = new EmbedBuilder()
+      .setColor(0x5865F2) // Blue for polls
+      .setAuthor({
+        name: `${user.username}#${user.discriminator}`,
+        iconURL: user.displayAvatarURL({ dynamic: true, size: 256 })
+      })
+      .setTitle('📊 Poll Vote Added')
+      .setDescription(`Voted for: **${answerText}**`)
+      .addFields(
+        { name: 'User ID', value: `\`${user.id}\``, inline: true },
+        { name: 'Server', value: poll.message.guild.name, inline: true },
+        { name: 'Channel', value: `#${poll.message.channel.name}`, inline: true }
+      )
+      .addFields({
+        name: 'Poll Question',
+        value: poll.question.text || '*No question*',
+        inline: false
+      })
+      .setTimestamp(new Date())
+      .setFooter({
+        text: `Live Forward • ${config.type === 'server' ? 'Server-wide' : 'Channel-specific'}`,
+        iconURL: poll.message.guild.iconURL({ dynamic: true, size: 32 })
+      });
+
+    // Send the embed to target channel
+    await targetChannel.send({ embeds: [embed] });
+
+    console.log(`[LIVE] Forwarded poll vote from ${user.tag} in ${poll.message.guild.name}#${poll.message.channel.name}`);
+
+  } catch (error) {
+    console.error('[LIVE] Error forwarding poll vote:', error);
+  }
+});
+
+// Handle thread creation
+client.on('threadCreate', async thread => {
+  // Ignore threads from DMs
+  if (!thread.guild) return;
+
+  try {
+    const { readLiveConfig } = require('./commands/live');
+    const liveConfig = readLiveConfig();
+
+    // Only check for server-wide forwarding for threads
+    const serverWideKey = `${thread.guild.id}_server`;
+    const config = liveConfig[serverWideKey];
+
+    if (!config) return; // No server-wide forwarding configured
+
+    // Don't forward threads from the target channel to avoid loops
+    if (thread.parentId === config.targetChannelId) return;
+
+    // Get target channel
+    const targetChannel = await client.channels.fetch(config.targetChannelId).catch(() => null);
+    if (!targetChannel || targetChannel.type !== 0) return;
+
+    // Check if bot can send messages in target channel
+    if (!targetChannel.permissionsFor(client.user).has('SendMessages')) return;
+
+    // Create embed for the thread
+    const embed = new EmbedBuilder()
+      .setColor(0x5865F2) // Blue for threads
+      .setAuthor({
+        name: `${thread.owner?.user?.username || 'Unknown'}#${thread.owner?.user?.discriminator || '0000'}`,
+        iconURL: thread.owner?.user?.displayAvatarURL({ dynamic: true, size: 256 })
+      })
+      .setTitle('🧵 Thread Created')
+      .setDescription(thread.name)
+      .addFields(
+        { name: 'Thread ID', value: `\`${thread.id}\``, inline: true },
+        { name: 'Server', value: thread.guild.name, inline: true },
+        { name: 'Parent Channel', value: `#${thread.parent?.name || 'Unknown'}`, inline: true }
+      )
+      .addFields({
+        name: 'Thread Type',
+        value: thread.type === 12 ? 'Private Thread' : 'Public Thread',
+        inline: true
+      })
+      .setTimestamp(new Date())
+      .setFooter({
+        text: 'Live Forward • Server-wide',
+        iconURL: thread.guild.iconURL({ dynamic: true, size: 32 })
+      });
+
+    // Send the embed to target channel
+    await targetChannel.send({ embeds: [embed] });
+
+    console.log(`[LIVE] Forwarded thread creation in ${thread.guild.name}#${thread.parent?.name}`);
+
+  } catch (error) {
+    console.error('[LIVE] Error forwarding thread creation:', error);
   }
 });
 
