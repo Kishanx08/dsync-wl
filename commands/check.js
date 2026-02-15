@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { SlashCommandBuilder } = require('discord.js');
 
 function loadCharacters() {
   try {
@@ -68,6 +69,25 @@ Job: ${character.job_name || 'N/A'}${character.department_name ? ` (${character.
 }
 
 module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('check')
+    .setDescription('Check character information from the database')
+    .addStringOption(option =>
+      option.setName('type')
+        .setDescription('Search type')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Character ID', value: 'cid' },
+          { name: 'License', value: 'license' },
+          { name: 'Phone Number', value: 'num' },
+          { name: 'Name', value: 'name' }
+        )
+    )
+    .addStringOption(option =>
+      option.setName('value')
+        .setDescription('The value to search for')
+        .setRequired(true)
+    ),
   name: 'check',
   aliases: ['ck'],
   description: 'Check character information from the database',
@@ -82,16 +102,34 @@ module.exports = {
     '$check number 444-9818',
     '$check name "Krishna Soni"'
   ],
-  async execute(message, args) {
-    if (!args[0]) {
-      return message.reply('Please provide a search type. Usage: `$check <cid | license | ld | num | number | name> <value>`');
-    }
+  async execute(messageOrInteraction, argsOrOptions) {
+    // Check if this is a slash command (interaction) or message command
+    const isInteraction = messageOrInteraction.isChatInputCommand?.();
+    
+    let searchType, searchValue, replyFunc;
+    
+    if (isInteraction) {
+      // Slash command handling
+      searchType = messageOrInteraction.options.getString('type');
+      searchValue = messageOrInteraction.options.getString('value');
+      replyFunc = async (content) => {
+        if (content.length > 2000) {
+          return messageOrInteraction.reply(content.slice(0, 2000));
+        }
+        return messageOrInteraction.reply(content);
+      };
+    } else {
+      // Message command handling
+      const message = messageOrInteraction;
+      const args = argsOrOptions;
+      
+      if (!args[0]) {
+        return message.reply('Please provide a search type. Usage: `$check <cid | license | ld | num | number | name> <value>`');
+      }
 
-    const searchType = args[0].toLowerCase();
-
-    // Handle list command
-    if (searchType === 'list') {
-      const helpMessage = `**$check Command Usage Guide**
+      // Handle list command
+      if (args[0].toLowerCase() === 'list') {
+        const helpMessage = `**$check Command Usage Guide**
 
 \`\`\`
 $check cid {character_id}     - Search by Character ID
@@ -121,21 +159,29 @@ Alias: $ck works the same as $check
 \`\`\`
 
 `;
+        return message.reply(helpMessage);
+      }
+
+      searchType = args[0].toLowerCase();
+      searchValue = args.slice(1).join(' ');
       
-      return message.reply(helpMessage);
-    }
-
-    const searchValue = args.slice(1).join(' ');
-
-    if (!searchValue) {
-      return message.reply('Please provide a search value. Usage: `$check <cid | license | ld | num | number | name> <value>`');
+      if (!searchValue) {
+        return message.reply('Please provide a search value. Usage: `$check <cid | license | ld | num | number | name> <value>`');
+      }
+      
+      replyFunc = async (content) => {
+        if (content.length > 2000) {
+          return message.reply(content.slice(0, 2000));
+        }
+        return message.reply(content);
+      };
     }
 
     try {
       const characters = loadCharacters();
       
       if (characters.length === 0) {
-        return message.reply('Character data is not available at the moment. Please try again later.');
+        return replyFunc('Character data is not available at the moment. Please try again later.');
       }
 
       let results = [];
@@ -166,15 +212,15 @@ Alias: $ck works the same as $check
           break;
           
         default:
-          return message.reply('Invalid search type. Use: `cid`, `license`, `ld`, `num`, `number`, or `name`');
+          return replyFunc('Invalid search type. Use: `cid`, `license`, `ld`, `num`, `number`, or `name`');
       }
 
       if (!results || results.length === 0) {
-        return message.reply(`No characters found for ${searchType}: ${searchValue}`);
+        return replyFunc(`No characters found for ${searchType}: ${searchValue}`);
       }
 
       if (results.length === 1) {
-        return message.reply(formatCharacterProfile(results[0]));
+        return replyFunc(formatCharacterProfile(results[0]));
       }
 
       // Multiple results
@@ -192,11 +238,11 @@ Alias: $ck works the same as $check
         response += `... and ${results.length - 10} more results. Please be more specific.`;
       }
 
-      return message.reply(response);
+      return replyFunc(response);
 
     } catch (error) {
       console.error('Error executing check command:', error);
-      return message.reply('An error occurred while searching for character information.');
+      return replyFunc('An error occurred while searching for character information.');
     }
   }
 };

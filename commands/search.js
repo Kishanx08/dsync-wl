@@ -1,21 +1,55 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
 const { canUsePrefixCommand } = require('../utils/permissions');
 
 module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('search')
+    .setDescription('Search for players by ID or name from the FiveM server')
+    .addStringOption(option =>
+      option.setName('query')
+        .setDescription('Player ID or name to search for')
+        .setRequired(true)
+    ),
   name: 'search',
   aliases: ['sh'],
   description: 'Search for players by ID or name from the FiveM server',
   usage: '$search <id|name> or $sh <id|name>',
   example: '$search 123 or $sh John',
-  async execute(message, args) {
-    console.log(`[SEARCH] Command received from ${message.author.tag} (${message.author.id})`);
+  async execute(messageOrInteraction, argsOrOptions) {
+    console.log(`[SEARCH] Command received from ${messageOrInteraction.author?.tag || messageOrInteraction.user?.tag} (${messageOrInteraction.author?.id || messageOrInteraction.user?.id})`);
 
-    // Get search term
-    const searchTerm = args.join(' ').trim();
+    // Check if this is a slash command (interaction) or message command
+    const isInteraction = messageOrInteraction.isChatInputCommand?.();
+    
+    let searchTerm;
+    let replyFunc;
+    
+    if (isInteraction) {
+      // Slash command handling
+      searchTerm = messageOrInteraction.options.getString('query');
+      replyFunc = async (content, embeds) => {
+        if (embeds) {
+          return messageOrInteraction.reply({ content, embeds });
+        }
+        return messageOrInteraction.reply(content);
+      };
+    } else {
+      // Message command handling
+      const message = messageOrInteraction;
+      searchTerm = argsOrOptions.join(' ').trim();
+      
+      replyFunc = async (content, embeds) => {
+        if (embeds) {
+          return message.reply({ content, embeds });
+        }
+        return message.reply(content);
+      };
+    }
+
     if (!searchTerm) {
       console.log(`[SEARCH] No search term provided`);
-      return message.reply('Please provide a player ID or name to search for. Example: `$search 123` or `$search John`');
+      return replyFunc('Please provide a player ID or name to search for. Example: `$search 123` or `$search John`');
     }
 
     try {
@@ -25,7 +59,7 @@ module.exports = {
       const players = await fetchPlayersData();
       if (!players) {
         console.log(`[SEARCH] Failed to fetch players data`);
-        return message.reply('Unable to fetch players data from the server. Please try again later.');
+        return replyFunc('Unable to fetch players data from the server. Please try again later.');
       }
 
       console.log(`[SEARCH] Fetched ${players.length} players from server`);
@@ -35,18 +69,18 @@ module.exports = {
 
       if (matches.length === 0) {
         console.log(`[SEARCH] No matches found for "${searchTerm}"`);
-        return message.reply(`No players found matching "${searchTerm}".`);
+        return replyFunc(`No players found matching "${searchTerm}".`);
       }
 
       // Build response embed
       const embed = buildSearchEmbed(matches, searchTerm);
 
       console.log(`[SEARCH] Found ${matches.length} matches, sending response`);
-      await message.reply({ embeds: [embed] });
+      await replyFunc(null, [embed]);
 
     } catch (error) {
       console.error('[SEARCH] Error executing search command:', error);
-      await message.reply('An error occurred while searching for players.');
+      await replyFunc('An error occurred while searching for players.');
     }
   },
 };
