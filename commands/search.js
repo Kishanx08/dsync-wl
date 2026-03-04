@@ -154,7 +154,7 @@ function buildSearchEmbed(matches, searchTerm) {
   const embed = new EmbedBuilder()
     .setColor(0x57F287)
     .setTitle('Player Search Results')
-    .setThumbnail('https://kishann.x02.me/i/5ZVW.png')
+    .setThumbnail('https://x02.me/u/9SQF.png')
     .setTimestamp(new Date());
 
   if (matches.length === 1) {

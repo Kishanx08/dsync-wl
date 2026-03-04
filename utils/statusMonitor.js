@@ -102,7 +102,7 @@ class FiveMStatusMonitor {
     const embed = new EmbedBuilder()
       .setColor(color)
       .setTitle(status.serverName || this.lastKnownServerName || this.domain || `${this.ip}:${this.port}`)
-      .setThumbnail('https://kishann.x02.me/i/5ZVW.png')
+      .setThumbnail('https://x02.me/u/9SQF.png')
       .setTimestamp(new Date());
 
     if (!status.online) {
@@ -342,7 +342,7 @@ class FiveMPlayersMonitor {
         const embed = new EmbedBuilder()
           .setColor(color)
           .setTitle('FiveM Server Players')
-          .setThumbnail('https://kishann.x02.me/i/5ZVW.png')
+          .setThumbnail('https://x02.me/u/9SQF.png')
           .setTimestamp(new Date())
           .addFields(
             { name: 'Status', value: '**<:offline_ids:1408889453698748539> Server Offline**', inline: false },
@@ -384,7 +384,7 @@ class FiveMPlayersMonitor {
           const embed = new EmbedBuilder()
             .setColor(color)
             .setTitle(index === 0 ? 'FiveM Server Players' : `FiveM Server Players (Page ${index + 1})`)
-            .setThumbnail('https://kishann.x02.me/i/5ZVW.png')
+            .setThumbnail('https://x02.me/u/9SQF.png')
             .setTimestamp(new Date());
 
           if (index === 0) {
@@ -426,7 +426,7 @@ class FiveMPlayersMonitor {
         const embed = new EmbedBuilder()
           .setColor(color)
           .setTitle('FiveM Server Players')
-          .setThumbnail('https://kishann.x02.me/i/5ZVW.png')
+          .setThumbnail('https://x02.me/u/9SQF.png')
           .setTimestamp(new Date())
           .addFields(
             { name: 'Status', value: '**<a:GreenDot:1408889190946570260> Online**', inline: false },
