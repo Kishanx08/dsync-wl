@@ -13,6 +13,13 @@ module.exports = {
   async execute(message, args) {
     console.log(`[LIVE] Command received from ${message.author.tag} (${message.author.id})`);
 
+    // Restrict command to specific server
+    const RESTRICTED_SERVER_ID = '1202157204723990528';
+    if (message.guild.id !== RESTRICTED_SERVER_ID) {
+      console.log(`[LIVE] Command used in invalid server: ${message.guild.name} (${message.guild.id})`);
+      return; // Ignore command silently
+    }
+
     // Check permission
     if (!canUsePrefixCommand(message.author.id, 'live')) {
       console.log(`[LIVE] Permission denied for user ${message.author.tag}`);
@@ -48,13 +55,17 @@ module.exports = {
     const targetChannelId = message.channel.id; // Where to forward messages
 
     try {
-      // Find the source guild
-      const sourceGuild = message.client.guilds.cache.find(g =>
-        g.name.toLowerCase().includes(serverName.toLowerCase())
-      );
+      // Find the source guild by ID or exact name
+      let sourceGuild = message.client.guilds.cache.get(serverName);
+      
+      if (!sourceGuild) {
+        sourceGuild = message.client.guilds.cache.find(g =>
+          g.name.toLowerCase() === serverName.toLowerCase()
+        );
+      }
 
       if (!sourceGuild) {
-        return message.reply(`❌ Could not find a server matching "${serverName}". Use \`$how list\` to see available servers.`);
+        return message.reply(`❌ Could not find a server with ID or exact name "${serverName}". Use \`$how list\` to see available servers.`);
       }
 
       // Check if bot can send messages in target channel
@@ -67,9 +78,13 @@ module.exports = {
 
       if (channelName) {
         // Channel-specific forwarding
-        const sourceChannel = sourceGuild.channels.cache.find(ch =>
-          ch.type === 0 && ch.name.toLowerCase().includes(channelName.toLowerCase())
-        );
+        let sourceChannel = sourceGuild.channels.cache.get(channelName);
+        
+        if (!sourceChannel) {
+          sourceChannel = sourceGuild.channels.cache.find(ch =>
+            ch.type === 0 && ch.name.toLowerCase() === channelName.toLowerCase()
+          );
+        }
 
         if (!sourceChannel) {
           return message.reply(`❌ Could not find a text channel matching "${channelName}" in ${sourceGuild.name}.`);
@@ -81,6 +96,12 @@ module.exports = {
         }
 
         configKey = `${sourceGuild.id}_${sourceChannel.id}`;
+        
+        // Check if this forwarding configuration already exists
+        if (config[configKey]) {
+          return message.reply(`❌ Live message forwarding from ${sourceGuild.name} #${sourceChannel.name} is already active!`);
+        }
+
         configData = {
           sourceGuildId: sourceGuild.id,
           sourceGuildName: sourceGuild.name,
@@ -111,6 +132,12 @@ module.exports = {
         }
 
         configKey = `${sourceGuild.id}_server`;
+        
+        // Check if this forwarding configuration already exists
+        if (config[configKey]) {
+          return message.reply(`❌ Live message forwarding from ${sourceGuild.name} (all channels) is already active!`);
+        }
+
         configData = {
           sourceGuildId: sourceGuild.id,
           sourceGuildName: sourceGuild.name,

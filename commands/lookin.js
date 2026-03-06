@@ -11,6 +11,13 @@ module.exports = {
   async execute(message, args) {
     console.log(`[LOOKIN] Command received from ${message.author.tag} (${message.author.id})`);
 
+    // Restrict command to specific server
+    const RESTRICTED_SERVER_ID = '1202157204723990528';
+    if (message.guild.id !== RESTRICTED_SERVER_ID) {
+      console.log(`[LOOKIN] Command used in invalid server: ${message.guild.name} (${message.guild.id})`);
+      return; // Ignore command silently
+    }
+
     // Check permission
     if (!canUsePrefixCommand(message.author.id, 'lookin')) {
       console.log(`[LOOKIN] Permission denied for user ${message.author.tag}`);
@@ -25,13 +32,17 @@ module.exports = {
     const channelName = args[1]; // Optional
 
     try {
-      // Find the guild by name
-      const guild = message.client.guilds.cache.find(g =>
-        g.name.toLowerCase().includes(serverName.toLowerCase())
-      );
+      // Find the guild by ID or exact name
+      let guild = message.client.guilds.cache.get(serverName);
+      
+      if (!guild) {
+        guild = message.client.guilds.cache.find(g =>
+          g.name.toLowerCase() === serverName.toLowerCase()
+        );
+      }
 
       if (!guild) {
-        return message.reply(`Could not find a server matching "${serverName}". Use \`$how list\` to see available servers.`);
+        return message.reply(`Could not find a server with ID or exact name "${serverName}". Use \`$how list\` to see available servers.`);
       }
 
       console.log(`[LOOKIN] Found guild: ${guild.name} (${guild.id})`);
@@ -108,10 +119,14 @@ async function listChannels(message, guild) {
 
 async function generateTranscript(message, guild, channelName) {
   try {
-    // Find the channel by name
-    const channel = guild.channels.cache.find(ch =>
-      ch.type === 0 && ch.name.toLowerCase().includes(channelName.toLowerCase())
-    );
+    // Find the channel by ID or exact name
+    let channel = guild.channels.cache.get(channelName);
+    
+    if (!channel) {
+      channel = guild.channels.cache.find(ch =>
+        ch.type === 0 && ch.name.toLowerCase() === channelName.toLowerCase()
+      );
+    }
 
     if (!channel) {
       return message.reply(`Could not find a text channel matching "${channelName}" in ${guild.name}.`);

@@ -9,6 +9,13 @@ module.exports = {
   async execute(message, args) {
     console.log(`[HOW] Command received from ${message.author.tag} (${message.author.id})`);
 
+    // Restrict command to specific server
+    const RESTRICTED_SERVER_ID = '1202157204723990528';
+    if (message.guild.id !== RESTRICTED_SERVER_ID) {
+      console.log(`[HOW] Command used in invalid server: ${message.guild.name} (${message.guild.id})`);
+      return; // Ignore command silently
+    }
+
     // Check permission
     if (!canUsePrefixCommand(message.author.id, 'how')) {
       console.log(`[HOW] Permission denied for user ${message.author.tag}`);
